@@ -1,6 +1,46 @@
 {
   "history": [
     {
+      "id": "_jpuXTbAQh8",
+      "title": "Chal Bombay",
+      "artist": "DIVINE - Topic",
+      "artistId": "DIVINE - Topic",
+      "thumbnail": "https://i.ytimg.com/vi_webp/_jpuXTbAQh8/maxresdefault.webp",
+      "duration": "2:54",
+      "durationSeconds": 174,
+      "playedAt": "2025-12-11T13:21:15.403Z"
+    },
+    {
+      "id": "haUuLvgX39E",
+      "title": "AURA = ♾️ | 1 HOUR VIRAL AURA MUSIC PLAYLIST 2025 🔥 TRENDING PHONK HITS",
+      "artist": "EMPIRE PHONK",
+      "artistId": "EMPIRE PHONK",
+      "thumbnail": "https://i.ytimg.com/vi_webp/haUuLvgX39E/maxresdefault.webp",
+      "duration": "65:57",
+      "durationSeconds": 3957,
+      "playedAt": "2025-12-11T13:21:03.128Z"
+    },
+    {
+      "id": "uG_p0ULRYho",
+      "title": "Aawaara Angaara (Film Version) | Tere Ishk Mein |Dhanush,Kriti |AR Rahman,Faheem|Aanand LR|Bhushan K",
+      "artist": "T-Series",
+      "artistId": "T-Series",
+      "thumbnail": "https://i.ytimg.com/vi/uG_p0ULRYho/hqdefault.jpg",
+      "duration": "3:48",
+      "durationSeconds": 210,
+      "playedAt": "2025-12-11T13:03:52.539Z"
+    },
+    {
+      "id": "NEAsHXgmqas",
+      "title": "Peddi Reddy Full Song | Bullet Bandi Laxman | Madeen Sk | Naga Durga | Leading Boys",
+      "artist": "Sound Lagare",
+      "artistId": "Sound Lagare",
+      "thumbnail": "https://i.ytimg.com/vi/NEAsHXgmqas/hqdefault.jpg",
+      "duration": "5:25",
+      "durationSeconds": 210,
+      "playedAt": "2025-12-11T13:01:03.137Z"
+    },
+    {
       "id": "vGJTaP6anOU",
       "title": "Kesariya (Full Video)",
       "artist": "Arijit Singh",
@@ -14,19 +54,25 @@
   "favorites": [],
   "playlists": [],
   "recentSearches": [
+    "chal bombay",
+    "aura",
+    "adele",
+    "nob",
+    "hii",
+    "chal bombey",
     "bollywood official music video 2024",
     "bollywood songs 2024",
     "gangnam style",
     "arijit singh"
   ],
   "lastPlayed": {
-    "id": "vGJTaP6anOU",
-    "title": "Kesariya (Full Video)",
-    "artist": "Arijit Singh",
-    "artistId": "arijit-singh",
-    "thumbnail": "https://i.ytimg.com/vi/vGJTaP6anOU/hqdefault.jpg",
-    "duration": "4:28",
-    "durationSeconds": 268
+    "id": "_jpuXTbAQh8",
+    "title": "Chal Bombay",
+    "artist": "DIVINE - Topic",
+    "artistId": "DIVINE - Topic",
+    "thumbnail": "https://i.ytimg.com/vi_webp/_jpuXTbAQh8/maxresdefault.webp",
+    "duration": "2:54",
+    "durationSeconds": 174
   },
   "preferences": {
     "region": "IN",

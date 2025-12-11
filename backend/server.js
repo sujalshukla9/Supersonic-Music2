@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { Innertube, UniversalCache } from 'youtubei.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,6 +14,22 @@ const PORT = process.env.PORT || 3001;
 
 // Configuration
 const DEFAULT_REGION = process.env.REGION || 'IN';
+
+// YouTube Client
+let yt = null;
+const initYouTube = async () => {
+    try {
+        yt = await Innertube.create({
+            cache: new UniversalCache(false),
+            generate_session_locally: true
+        });
+        console.log('[YouTube] Client initialized');
+    } catch (e) {
+        console.error('[YouTube] Init error:', e);
+    }
+};
+initYouTube();
+
 const YT_API_KEY = process.env.YT_KEY || 'AIzaSyD19rb22YPwhrDDv4-FqBY5DQRUPfs24fE';
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
 
@@ -161,27 +178,37 @@ async function searchVideos(query, maxResults = 20, type = 'video') {
         return cached.data;
     }
 
-    const data = await youtubeApiCall('search', {
-        part: 'snippet',
-        type,
-        q: query,
-        maxResults,
-        videoCategoryId: '10', // Music category
-        regionCode: DEFAULT_REGION
-    });
+    if (!yt) return [];
 
-    const results = data.items?.map(item => ({
-        id: typeof item.id === 'string' ? item.id : item.id.videoId,
-        title: item.snippet.title,
-        artist: item.snippet.channelTitle,
-        channelId: item.snippet.channelId,
-        thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url,
-        publishedAt: item.snippet.publishedAt,
-        description: item.snippet.description
-    })) || [];
+    try {
+        const search = await yt.search(query);
+        let items = search.results || [];
 
-    searchCache.set(cacheKey, { data: results, timestamp: Date.now() });
-    return results;
+        if (type === 'video') items = items.filter(i => i.type === 'Video');
+        if (type === 'channel') items = items.filter(i => i.type === 'Channel');
+        if (type === 'playlist') items = items.filter(i => i.type === 'Playlist');
+
+        const results = items.slice(0, maxResults).map(item => {
+            const thumbnail = item.thumbnails?.[0]?.url || item.thumbnails?.[0] || '';
+            return {
+                id: item.id,
+                title: item.title?.text || item.title || '',
+                artist: item.author?.name || item.channel?.name || '',
+                channelId: item.author?.id || item.channel?.id || '',
+                thumbnail: thumbnail,
+                publishedAt: item.published?.text || '',
+                description: item.description?.text || '',
+                duration: item.duration?.text || '3:30',
+                durationSeconds: item.duration?.seconds || 210
+            };
+        });
+
+        searchCache.set(cacheKey, { data: results, timestamp: Date.now() });
+        return results;
+    } catch (e) {
+        console.error('[Search] Error:', e.message);
+        return [];
+    }
 }
 
 // Get video details
@@ -192,33 +219,36 @@ async function getVideoDetails(videoIds) {
         return !cached || Date.now() - cached.timestamp > METADATA_CACHE_DURATION;
     });
 
-    if (uncachedIds.length > 0) {
-        const data = await youtubeApiCall('videos', {
-            part: 'snippet,contentDetails,statistics',
-            id: uncachedIds.join(',')
-        });
-
-        for (const item of data.items || []) {
-            metadataCache.set(item.id, {
-                data: {
-                    id: item.id,
-                    title: item.snippet.title,
-                    artist: item.snippet.channelTitle,
-                    channelId: item.snippet.channelId,
-                    thumbnail: item.snippet.thumbnails?.maxres?.url ||
-                        item.snippet.thumbnails?.high?.url ||
-                        item.snippet.thumbnails?.medium?.url,
-                    duration: formatDurationFromISO(item.contentDetails?.duration),
-                    durationSeconds: parseDuration(item.contentDetails?.duration),
-                    publishedAt: item.snippet.publishedAt,
-                    description: item.snippet.description,
-                    tags: item.snippet.tags || [],
-                    viewCount: parseInt(item.statistics?.viewCount || 0),
-                    likeCount: parseInt(item.statistics?.likeCount || 0),
-                    moods: extractMoodTags(item.snippet.title)
-                },
-                timestamp: Date.now()
+    if (uncachedIds.length > 0 && yt) {
+        try {
+            const promises = uncachedIds.map(async (id) => {
+                try {
+                    const info = await yt.getBasicInfo(id);
+                    const basic = info.basic_info;
+                    return {
+                        id: basic.id,
+                        title: basic.title,
+                        artist: basic.channel?.name || '',
+                        channelId: basic.channel?.id || '',
+                        thumbnail: basic.thumbnail?.[0]?.url || '',
+                        duration: formatDuration(basic.duration || 0),
+                        durationSeconds: basic.duration || 0,
+                        publishedAt: '',
+                        description: basic.short_description || '',
+                        tags: basic.keywords || [],
+                        viewCount: basic.view_count || 0,
+                        likeCount: basic.like_count || 0,
+                        moods: extractMoodTags(basic.title)
+                    };
+                } catch (e) { return null; }
             });
+
+            const items = (await Promise.all(promises)).filter(Boolean);
+            for (const item of items) {
+                metadataCache.set(item.id, { data: item, timestamp: Date.now() });
+            }
+        } catch (e) {
+            console.error('[Video Details] Error:', e.message);
         }
     }
 
@@ -231,49 +261,40 @@ async function getTrendingMusic(maxResults = 25) {
         return trendingCache.data;
     }
 
-    const data = await youtubeApiCall('videos', {
-        part: 'snippet,contentDetails,statistics',
-        chart: 'mostPopular',
-        videoCategoryId: '10',
-        regionCode: DEFAULT_REGION,
-        maxResults
-    });
+    try {
+        const results = await searchVideos(`trending music ${DEFAULT_REGION} top 50`, maxResults);
+        const ranked = results.map((r, i) => ({ ...r, rank: i + 1, moods: extractMoodTags(r.title) }));
 
-    const results = data.items?.map((item, rank) => ({
-        id: item.id,
-        title: item.snippet.title,
-        artist: item.snippet.channelTitle,
-        channelId: item.snippet.channelId,
-        thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url,
-        duration: formatDurationFromISO(item.contentDetails?.duration),
-        durationSeconds: parseDuration(item.contentDetails?.duration),
-        viewCount: parseInt(item.statistics?.viewCount || 0),
-        rank: rank + 1,
-        moods: extractMoodTags(item.snippet.title)
-    })) || [];
-
-    trendingCache.data = results;
-    trendingCache.timestamp = Date.now();
-    return results;
+        trendingCache.data = ranked;
+        trendingCache.timestamp = Date.now();
+        return ranked;
+    } catch (e) {
+        console.error('[Trending] Error:', e.message);
+        return [];
+    }
 }
 
 // Get related videos (for autoplay)
+// Get related videos (for autoplay)
 async function getRelatedVideos(videoId, maxResults = 15) {
-    const data = await youtubeApiCall('search', {
-        part: 'snippet',
-        type: 'video',
-        relatedToVideoId: videoId,
-        maxResults,
-        videoCategoryId: '10'
-    });
+    if (!yt) return [];
+    try {
+        const info = await yt.getInfo(videoId);
+        const related = info.watch_next_feed || [];
 
-    return data.items?.map(item => ({
-        id: item.id.videoId,
-        title: item.snippet.title,
-        artist: item.snippet.channelTitle,
-        channelId: item.snippet.channelId,
-        thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url
-    })).filter(v => v.id) || [];
+        const items = related.filter(item => item.type === 'CompactVideo').slice(0, maxResults);
+
+        return items.map(item => ({
+            id: item.id,
+            title: item.title?.text || '',
+            artist: item.author?.name || '',
+            channelId: item.author?.id || '',
+            thumbnail: item.thumbnails?.[0]?.url || ''
+        }));
+    } catch (e) {
+        console.error('[Related] Error:', e.message);
+        return [];
+    }
 }
 
 // Get channel/artist details
