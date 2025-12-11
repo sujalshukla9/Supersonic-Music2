@@ -1,5 +1,1 @@
-[build]
-root = "backend"
 
-[start]
-cmd = "node server.js"
