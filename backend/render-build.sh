@@ -1,10 +1,10 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
-# Install Python
+# Install python + pip
 apt-get update
 apt-get install -y python3 python3-pip
 
 # Install yt-dlp
-pip3 install yt-dlp
+pip3 install --upgrade yt-dlp
 
-echo "yt-dlp installed successfully!"
+echo "Python & YT-DLP installed successfully"
