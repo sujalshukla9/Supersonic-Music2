@@ -191,6 +191,19 @@ export const RightPlayer = () => {
           if (abortController) abortController.abort();
         }, 45000);
 
+        // First, try the proxy stream (most reliable for CORS)
+        console.log('[Audio] Trying proxy stream first...');
+        const proxyUrl = `${BACKEND_URL}/stream/${currentSong.id}`;
+        const proxySuccess = await tryLoadFromUrl(proxyUrl);
+        if (proxySuccess) {
+          console.log('[Audio] Proxy stream success');
+          return;
+        }
+
+        if (isCancelled) return;
+
+        // If proxy fails, try getting direct URL from backend
+        console.log('[Audio] Proxy failed, trying direct URL...');
         const response = await fetch(`${BACKEND_URL}/audio/${currentSong.id}`, {
           signal: abortController.signal
         });
@@ -203,21 +216,21 @@ export const RightPlayer = () => {
           const data = await response.json();
 
           if (data.url) {
-            console.log('[Audio] Got URL from backend');
+            console.log('[Audio] Got direct URL from backend');
             const success = await tryLoadFromUrl(data.url);
-            if (success) return;
-
-            console.log('[Audio] Direct URL failed, trying proxy...');
-            if (!isCancelled) {
-              const proxyUrl = `${BACKEND_URL}/stream/${currentSong.id}`;
-              const proxySuccess = await tryLoadFromUrl(proxyUrl);
-              if (proxySuccess) return;
+            if (success) {
+              console.log('[Audio] Direct URL success');
+              return;
             }
           }
+        } else {
+          console.error('[Audio] Backend response not ok:', response.status);
         }
       } catch (e: any) {
         if (e.name === 'AbortError') {
           console.error('[Audio] Request timed out');
+        } else {
+          console.error('[Audio] Error:', e.message);
         }
       }
 

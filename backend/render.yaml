@@ -1,0 +1,20 @@
+# Render.com Blueprint Configuration
+# This file helps Render understand how to deploy your service
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: supersonic-music-backend
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: REGION
+        value: IN
+      - key: NODE_ENV
+        value: production
+      - key: YT_KEY
+        sync: false  # Set this manually in Render dashboard for security

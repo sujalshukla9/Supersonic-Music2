@@ -23,18 +23,19 @@ const Search = () => {
         setSongs([]);
         return;
       }
-      
+
       setIsLoading(true);
       try {
-        const results = await searchYouTube(query, 20);
+        const results = await searchYouTube(query, 30);
         const formattedSongs: Song[] = results.map((video) => ({
           id: video.id,
           title: video.title,
           artist: video.channelTitle,
-          artistId: video.channelTitle,
+          artistId: video.channelId || video.channelTitle,
+          channelId: video.channelId,
           thumbnail: video.thumbnail,
           duration: video.duration || '3:30',
-          durationSeconds: video.duration ? durationToSeconds(video.duration) : 210,
+          durationSeconds: video.durationSeconds || (video.duration ? durationToSeconds(video.duration) : 210),
         }));
         setSongs(formattedSongs);
         setQueue(formattedSongs);

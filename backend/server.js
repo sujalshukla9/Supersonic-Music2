@@ -33,19 +33,50 @@ initYouTube();
 const YT_API_KEY = process.env.YT_KEY || 'AIzaSyD19rb22YPwhrDDv4-FqBY5DQRUPfs24fE';
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
 
-// CORS configuration
+// CORS configuration - allow Vercel and other origins
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : ['*'];
+
 app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        // Allow all origins in development, or check allowed list in production
+        if (allowedOrigins[0] === '*' || allowedOrigins.some(o => origin.includes(o))) {
+            return callback(null, true);
+        }
+        // Allow all vercel.app and localhost origins
+        if (origin.includes('vercel.app') || origin.includes('localhost')) {
+            return callback(null, true);
+        }
+        return callback(null, true); // Allow all for now
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Range', 'Authorization'],
+    exposedHeaders: ['Content-Range', 'Content-Length', 'Accept-Ranges'],
     credentials: true
 }));
+
+// Handle preflight requests for streaming endpoints
+app.options('/stream/:videoId', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges');
+    res.status(204).end();
+});
 
 app.use(express.json());
 
 // ============================================
 // DATABASE - Simple JSON file storage
 // ============================================
-const DB_PATH = path.join(__dirname, 'database.json');
+// Use /tmp on production (Render) for ephemeral storage, or local path for development
+const isProduction = process.env.NODE_ENV === 'production';
+const DB_PATH = isProduction
+    ? '/tmp/database.json'
+    : path.join(__dirname, 'database.json');
 
 const defaultDB = {
     history: [],           // Play history
@@ -171,38 +202,112 @@ async function youtubeApiCall(endpoint, params) {
 }
 
 // Search videos
-async function searchVideos(query, maxResults = 20, type = 'video') {
+async function searchVideos(query, maxResults = 30, type = 'video') {
     const cacheKey = `search:${query}:${maxResults}`;
     const cached = searchCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < SEARCH_CACHE_DURATION) {
+        console.log(`[Search] Cache hit for: ${query}`);
         return cached.data;
     }
 
-    if (!yt) return [];
+    if (!yt) {
+        console.error('[Search] YouTube client not initialized');
+        return [];
+    }
 
     try {
+        console.log(`[Search] Searching for: ${query}`);
         const search = await yt.search(query);
         let items = search.results || [];
 
-        if (type === 'video') items = items.filter(i => i.type === 'Video');
-        if (type === 'channel') items = items.filter(i => i.type === 'Channel');
-        if (type === 'playlist') items = items.filter(i => i.type === 'Playlist');
+        console.log(`[Search] Found ${items.length} raw results`);
+
+        // Log found types for debugging
+        const foundTypes = [...new Set(items.map(i => i.type))];
+        console.log(`[Search] Item types found: ${foundTypes.join(', ')}`);
+
+        // Expand shelf/container items to extract videos within them
+        const expandedItems = [];
+        for (const item of items) {
+            if (item.type === 'Video' || item.type === 'CompactVideo' || item.type === 'GridVideo') {
+                expandedItems.push(item);
+            } else if (item.type === 'LockupView') {
+                // LockupView is a newer container format - extract video info if available
+                if (item.content_id || item.id) {
+                    expandedItems.push({
+                        ...item,
+                        id: item.content_id || item.id,
+                        type: 'Video'
+                    });
+                }
+            } else if (item.type === 'Shelf' || item.type === 'GridShelfView' || item.type === 'RichShelf') {
+                // Extract videos from shelves
+                const shelfContent = item.content?.items || item.items || item.contents || [];
+                for (const subItem of shelfContent) {
+                    if (subItem.type === 'Video' || subItem.type === 'CompactVideo' || subItem.type === 'GridVideo' || subItem.id) {
+                        expandedItems.push(subItem);
+                    }
+                }
+            } else if (item.id && typeof item.id === 'string' && item.id.length === 11) {
+                // Has video ID, so it's likely a video
+                expandedItems.push(item);
+            }
+        }
+
+        // If we got more items from expansion, use those
+        if (expandedItems.length > 0) {
+            items = expandedItems;
+            console.log(`[Search] Expanded to ${items.length} items from containers`);
+        }
+
+        // Filter by type if specified
+        if (type === 'video') {
+            // Accept various video types from YouTube
+            const videoTypes = ['Video', 'CompactVideo', 'GridVideo', 'PlaylistVideo', 'VideoWithContext', 'ReelItem'];
+            items = items.filter(i => {
+                // Check if it's a video type
+                if (videoTypes.some(t => i.type?.includes(t))) return true;
+                // Also include items that have a video ID (some items don't have explicit type)
+                if (i.id && typeof i.id === 'string' && i.id.length === 11) return true;
+                return false;
+            });
+        } else if (type === 'channel') {
+            items = items.filter(i => i.type === 'Channel' || i.type === 'CompactChannel');
+        } else if (type === 'playlist') {
+            items = items.filter(i => i.type === 'Playlist' || i.type === 'CompactPlaylist' || i.type === 'GridPlaylist');
+        }
+
+        console.log(`[Search] ${items.length} items after type filter`);
 
         const results = items.slice(0, maxResults).map(item => {
-            const thumbnail = item.thumbnails?.[0]?.url || item.thumbnails?.[0] || '';
+            // Get the best thumbnail
+            let thumbnail = '';
+            if (item.thumbnails && Array.isArray(item.thumbnails)) {
+                // Try to get highest quality thumbnail
+                const sorted = [...item.thumbnails].sort((a, b) => (b.width || 0) - (a.width || 0));
+                thumbnail = sorted[0]?.url || item.thumbnails[0]?.url || item.thumbnails[0] || '';
+            }
+
+            // Fallback to YouTube thumbnail URL if empty
+            if (!thumbnail && item.id) {
+                thumbnail = `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`;
+            }
+
             return {
                 id: item.id,
                 title: item.title?.text || item.title || '',
-                artist: item.author?.name || item.channel?.name || '',
-                channelId: item.author?.id || item.channel?.id || '',
+                artist: item.author?.name || item.channel?.name || item.owner?.name || '',
+                channelId: item.author?.id || item.channel?.id || item.owner?.id || '',
                 thumbnail: thumbnail,
                 publishedAt: item.published?.text || '',
-                description: item.description?.text || '',
+                description: item.description?.text || item.description || '',
                 duration: item.duration?.text || '3:30',
-                durationSeconds: item.duration?.seconds || 210
+                durationSeconds: item.duration?.seconds || 210,
+                viewCount: item.view_count?.text || item.views?.text || ''
             };
         });
 
+        console.log(`[Search] Returning ${results.length} results for: ${query}`);
         searchCache.set(cacheKey, { data: results, timestamp: Date.now() });
         return results;
     } catch (e) {
@@ -757,23 +862,40 @@ app.get('/stream/:videoId', async (req, res) => {
     }
 
     try {
+        console.log(`[Stream] Starting stream for: ${videoId}`);
         const audioInfo = await getAudioUrl(videoId);
 
         if (!audioInfo?.url) {
+            console.error(`[Stream] No audio URL for: ${videoId}`);
             return res.status(404).json({ error: 'Audio not available' });
         }
 
-        const audioResponse = await fetch(audioInfo.url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Referer': 'https://www.youtube.com/',
-                'Range': req.headers.range || 'bytes=0-'
-            }
-        });
+        const range = req.headers.range;
+        const headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://www.youtube.com/',
+            'Origin': 'https://www.youtube.com'
+        };
 
+        if (range) {
+            headers['Range'] = range;
+        }
+
+        const audioResponse = await fetch(audioInfo.url, { headers });
+
+        if (!audioResponse.ok && audioResponse.status !== 206) {
+            console.error(`[Stream] Upstream error for ${videoId}: ${audioResponse.status}`);
+            return res.status(audioResponse.status).json({ error: 'Upstream error' });
+        }
+
+        // Set response headers
         res.status(audioResponse.status);
         res.setHeader('Content-Type', audioResponse.headers.get('content-type') || 'audio/mp4');
         res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Range');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
 
         const contentLength = audioResponse.headers.get('content-length');
         if (contentLength) res.setHeader('Content-Length', contentLength);
@@ -781,20 +903,43 @@ app.get('/stream/:videoId', async (req, res) => {
         const contentRange = audioResponse.headers.get('content-range');
         if (contentRange) res.setHeader('Content-Range', contentRange);
 
+        // Handle client disconnect
+        let clientClosed = false;
+        req.on('close', () => {
+            clientClosed = true;
+        });
+
+        // Stream the audio data
         const reader = audioResponse.body.getReader();
+
         const pump = async () => {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                res.write(Buffer.from(value));
+            try {
+                while (!clientClosed) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    if (!clientClosed) {
+                        res.write(Buffer.from(value));
+                    }
+                }
+            } catch (e) {
+                if (!clientClosed) {
+                    console.error(`[Stream] Pump error for ${videoId}:`, e.message);
+                }
+            } finally {
+                try { reader.cancel(); } catch (e) { }
+                if (!clientClosed) {
+                    res.end();
+                }
             }
-            res.end();
         };
 
-        pump().catch(() => res.end());
+        pump();
+        console.log(`[Stream] Started streaming: ${videoId}`);
     } catch (error) {
-        console.error(`[Stream] Error: ${error.message}`);
-        res.status(500).json({ error: 'Stream failed' });
+        console.error(`[Stream] Error for ${videoId}:`, error.message);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Stream failed', message: error.message });
+        }
     }
 });
 
@@ -811,7 +956,7 @@ app.get('/search', async (req, res) => {
         // Add to recent searches
         db.recentSearches = [q, ...db.recentSearches.filter(s => s !== q)].slice(0, 20);
 
-        const results = await searchVideos(q + ' music', parseInt(maxResults));
+        const results = await searchVideos(q, parseInt(maxResults));
 
         // Get full details for search results
         const videoIds = results.map(r => r.id);

@@ -1,6 +1,50 @@
 {
   "history": [
     {
+      "id": "-sbKzeFczbw",
+      "title": "90s Evergreen Hindi Songs | 90s Hits Hindi Songs | Romantic Hindi Songs |90s Bollywood Songs Jukebox",
+      "artist": "Tips Official",
+      "artistId": "UCJrDMFOdv1I2k8n9oK_V21w",
+      "thumbnail": "https://i.ytimg.com/vi/-sbKzeFczbw/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLANYxFL6XC7ZImJ3y680166A_IN7w",
+      "duration": "1:34:03",
+      "durationSeconds": 5643,
+      "source": "mood",
+      "playedAt": "2025-12-12T07:53:53.971Z"
+    },
+    {
+      "id": "bsvmj3521Vs",
+      "title": "Shubh - Aura (Official Audio)",
+      "artist": "SHUBH",
+      "artistId": "UCtGbExCzlwmsyWKpxLnyEww",
+      "channelId": "UCtGbExCzlwmsyWKpxLnyEww",
+      "thumbnail": "https://i.ytimg.com/vi_webp/bsvmj3521Vs/maxresdefault.webp",
+      "duration": "2:46",
+      "durationSeconds": 166,
+      "playedAt": "2025-12-12T07:41:26.481Z"
+    },
+    {
+      "id": "9uS3o5YOR1U",
+      "title": "EVERGREEN HINDI SONGS  #instrumental #music #guitar #hindisong #india #softmusic #song #bollywood",
+      "artist": "Gillz Guitar",
+      "artistId": "UCZvxYVYkts77MGCCCKplB4g",
+      "channelId": "UCZvxYVYkts77MGCCCKplB4g",
+      "thumbnail": "https://i.ytimg.com/vi_webp/9uS3o5YOR1U/maxresdefault.webp",
+      "duration": "62:59",
+      "durationSeconds": 3779,
+      "playedAt": "2025-12-12T07:38:20.877Z"
+    },
+    {
+      "id": "LElOSR7cJyM",
+      "title": "Top 20 Bollywood Romance  | Audio Jukebox | Best Hindi Love Songs | Romantic Bollywood Hits",
+      "artist": "YRF Music",
+      "artistId": "UCjeD2I8jwXg2l_nvXb_6Hzw",
+      "thumbnail": "https://i.ytimg.com/vi/LElOSR7cJyM/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDRndaRqdSQj_n6zAh_dNvV-FK8rw",
+      "duration": "1:41:37",
+      "durationSeconds": 6097,
+      "source": "mood",
+      "playedAt": "2025-12-12T07:37:33.640Z"
+    },
+    {
       "id": "_jpuXTbAQh8",
       "title": "Chal Bombay",
       "artist": "DIVINE - Topic",
@@ -54,8 +98,12 @@
   "favorites": [],
   "playlists": [],
   "recentSearches": [
-    "chal bombay",
     "aura",
+    "shubh aura",
+    "bollywood songs",
+    "bollywood",
+    "chalbombay",
+    "chal bombay",
     "adele",
     "nob",
     "hii",
@@ -66,13 +114,14 @@
     "arijit singh"
   ],
   "lastPlayed": {
-    "id": "_jpuXTbAQh8",
-    "title": "Chal Bombay",
-    "artist": "DIVINE - Topic",
-    "artistId": "DIVINE - Topic",
-    "thumbnail": "https://i.ytimg.com/vi_webp/_jpuXTbAQh8/maxresdefault.webp",
-    "duration": "2:54",
-    "durationSeconds": 174
+    "id": "-sbKzeFczbw",
+    "title": "90s Evergreen Hindi Songs | 90s Hits Hindi Songs | Romantic Hindi Songs |90s Bollywood Songs Jukebox",
+    "artist": "Tips Official",
+    "artistId": "UCJrDMFOdv1I2k8n9oK_V21w",
+    "thumbnail": "https://i.ytimg.com/vi/-sbKzeFczbw/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLANYxFL6XC7ZImJ3y680166A_IN7w",
+    "duration": "1:34:03",
+    "durationSeconds": 5643,
+    "source": "mood"
   },
   "preferences": {
     "region": "IN",
