@@ -1,21 +1,35 @@
-FROM node:18
+# Use Ubuntu 22.04 (yt-dlp works perfectly)
+FROM ubuntu:22.04
 
-# Install Python + PIP
-RUN apt-get update && \
-    apt-get install -y python3 python3-pip && \
-    pip3 install yt-dlp
+# Prevent timezone prompt
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Set work directory
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
+    yt-dlp \
+    curl \
+    git \
+    build-essential
+
+# Install Node.js 18
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs
+
+# Set working directory
 WORKDIR /app
 
-# Copy backend files
-COPY . .
-
-# Install Node dependencies
+# Copy package.json and install Node dependencies
+COPY package*.json ./
 RUN npm install
+
+# Copy backend source
+COPY . .
 
 # Expose backend port
 EXPOSE 3001
 
-# Start server
+# Start backend
 CMD ["node", "server.js"]
