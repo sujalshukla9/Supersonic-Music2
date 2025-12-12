@@ -1,23 +1,26 @@
-# ---- Base Image ----
+# -------- BASE IMAGE --------
 FROM node:18-bullseye
 
-# ---- Install Python + Pip + FFmpeg ----
+# -------- INSTALL PYTHON + PIP + FFMPEG + YT-DLP --------
 RUN apt-get update && \
     apt-get install -y python3 python3-pip ffmpeg && \
-    pip3 install yt-dlp
+    pip3 install --upgrade yt-dlp && \
+    rm -rf /var/lib/apt/lists/*
 
-# ---- Create App Directory ----
+# -------- SET WORKDIR --------
 WORKDIR /app
 
-# ---- Copy Backend Files ----
-COPY package.json package-lock.json ./
-COPY . .
+# -------- COPY PACKAGE FILES --------
+COPY package*.json ./
 
-# ---- Install Node Dependencies ----
+# -------- INSTALL NODE DEPENDENCIES --------
 RUN npm install
 
-# ---- Expose Port ----
+# -------- COPY ALL FILES --------
+COPY . .
+
+# -------- EXPOSE PORT --------
 EXPOSE 3001
 
-# ---- Start Server ----
+# -------- START COMMAND --------
 CMD ["node", "server.js"]
