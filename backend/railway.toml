@@ -1,0 +1,22 @@
+# Railway configuration for Supersonic Music Backend
+# https://docs.railway.app/reference/config-as-code
+
+[build]
+# Use Dockerfile for building
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Health check configuration
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+
+# Start command (optional, Dockerfile CMD is used by default)
+# startCommand = "node server.js"
+
+# Number of replicas (1 for free tier)
+numReplicas = 1
+
+# Restart policy
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

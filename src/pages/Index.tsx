@@ -1,4 +1,3 @@
-import { MainLayout } from '@/components/layout/MainLayout';
 import { HeroBanner } from '@/components/sections/HeroBanner';
 import { PlaylistSection } from '@/components/sections/PlaylistSection';
 import { TrendingSection } from '@/components/sections/TrendingSection';
@@ -14,16 +13,15 @@ const Index = () => {
         <title>Supersonic Music - Stream Your Favorite Music</title>
         <meta name="description" content="Discover millions of songs, playlists, and artists. Stream trending music from around the world with Supersonic Music." />
       </Helmet>
-      <MainLayout>
-        <div className="space-y-4 sm:space-y-8">
-          <HeroBanner />
-          <RecentlyPlayedSection />
-          <RecommendationsSection />
-          <TrendingSection />
-          <PlaylistSection />
-          <ArtistsSection />
-        </div>
-      </MainLayout>
+
+      <div className="space-y-4 sm:space-y-8">
+        <HeroBanner />
+        <RecentlyPlayedSection />
+        <RecommendationsSection />
+        <TrendingSection />
+        <PlaylistSection />
+        <ArtistsSection />
+      </div>
     </>
   );
 };

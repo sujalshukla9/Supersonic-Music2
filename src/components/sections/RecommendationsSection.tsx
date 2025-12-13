@@ -4,6 +4,7 @@ import { SongCard } from '@/components/cards/SongCard';
 import { usePlayerStore, Song } from '@/store/playerStore';
 import { useEffect, useState, useCallback } from 'react';
 import { getAutoplayQueue } from '@/lib/youtube';
+import { Link } from 'react-router-dom';
 
 export const RecommendationsSection = () => {
     const { history, setQueue } = usePlayerStore();
@@ -78,13 +79,15 @@ export const RecommendationsSection = () => {
                     >
                         <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
                     </motion.button>
-                    <motion.button
-                        whileHover={{ x: 5 }}
-                        className="hidden sm:flex items-center gap-1 text-xs sm:text-sm text-muted-foreground hover:text-primary transition-colors"
-                    >
-                        See all
-                        <ChevronRight className="w-4 h-4" />
-                    </motion.button>
+                    <Link to="/explore">
+                        <motion.button
+                            whileHover={{ x: 5 }}
+                            className="hidden sm:flex items-center gap-1 text-xs sm:text-sm text-muted-foreground hover:text-primary transition-colors"
+                        >
+                            See all
+                            <ChevronRight className="w-4 h-4" />
+                        </motion.button>
+                    </Link>
                 </div>
             </div>
 

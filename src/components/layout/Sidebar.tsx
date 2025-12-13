@@ -1,4 +1,4 @@
-import { Home, Search, Library, Compass, Music2, Users, Disc3, Heart, ListMusic, Settings, X } from 'lucide-react';
+import { Home, Search, Library, Compass, Music2, Users, Disc3, Heart, ListMusic, Settings, X, Clock } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { cn } from '@/lib/utils';
 import { usePlayerStore } from '@/store/playerStore';
@@ -13,6 +13,7 @@ const menuItems = [
 const libraryItems = [
   { icon: Heart, label: 'Favorites', path: '/favorites' },
   { icon: ListMusic, label: 'Playlists', path: '/playlists' },
+  { icon: Clock, label: 'History', path: '/history' },
   { icon: Users, label: 'Artists', path: '/artists' },
   { icon: Disc3, label: 'Albums', path: '/albums' },
 ];
@@ -83,16 +84,20 @@ export const Sidebar = () => {
 
       {/* User Section */}
       <div className="p-4 border-t border-sidebar-border">
-        <div className="flex items-center gap-3 p-2 rounded-xl hover:bg-sidebar-accent transition-colors cursor-pointer">
+        <NavLink
+          to="/settings"
+          onClick={() => window.innerWidth < 1024 && toggleSidebar()}
+          className="flex items-center gap-3 p-2 rounded-xl hover:bg-sidebar-accent transition-colors cursor-pointer group"
+        >
           <div className="w-10 h-10 rounded-full bg-gradient-primary flex items-center justify-center">
-            <span className="text-sm font-bold text-primary-foreground">JD</span>
+            <span className="text-sm font-bold text-primary-foreground">S</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">John Doe</p>
+            <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">Supersonic</p>
             <p className="text-xs text-muted-foreground">Premium</p>
           </div>
-          <Settings className="w-4 h-4 text-muted-foreground" />
-        </div>
+          <Settings className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+        </NavLink>
       </div>
     </>
   );

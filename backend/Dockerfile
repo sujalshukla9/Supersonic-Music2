@@ -1,19 +1,15 @@
-# Use Node.js 20 Alpine as base image
+# Use Node.js 20 Alpine with Python support
 FROM node:20-alpine
 
-# Install Python, pip, and other dependencies required for yt-dlp
-RUN apk add --no-cache \
-    python3 \
-    py3-pip \
-    ffmpeg \
-    curl \
-    && ln -sf python3 /usr/bin/python
+# Install Python and pip for music_api.py (uses yt-dlp and ytmusicapi)
+RUN apk add --no-cache python3 py3-pip ffmpeg
 
-# Install yt-dlp via pip
-RUN pip3 install --no-cache-dir --break-system-packages yt-dlp
+# Create a virtual environment for Python dependencies
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Verify yt-dlp installation
-RUN python -m yt_dlp --version
+# Install Python dependencies
+RUN pip install --no-cache-dir yt-dlp ytmusicapi
 
 # Create app directory
 WORKDIR /app
@@ -21,21 +17,18 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install Node.js dependencies
-RUN npm ci --only=production
+# Install Node.js dependencies (production only)
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
-
-# Create a directory for the database file
-RUN mkdir -p /app/data
 
 # Expose port (Render will set PORT env variable)
 EXPOSE 3001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-3001}/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT:-3001}/health || exit 1
 
 # Start the server
 CMD ["node", "server.js"]

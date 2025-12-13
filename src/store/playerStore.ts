@@ -1,5 +1,7 @@
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useSettingsStore } from './settingsStore';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
@@ -27,7 +29,6 @@ interface PlayerState {
   history: Song[];
   shuffle: boolean;
   repeat: 'off' | 'one' | 'all';
-  autoplay: boolean;
   isFullPlayer: boolean;
   isSidebarOpen: boolean;
   isRightPanelOpen: boolean;
@@ -55,6 +56,11 @@ interface PlayerState {
   setIsPlaying: (isPlaying: boolean) => void;
   loadAutoplayQueue: (seedVideoId: string) => Promise<void>;
   addToHistory: (song: Song) => void;
+  seekTime: number | null;
+  seekTo: (time: number) => void;
+  resetSeek: () => void;
+  isSeeking: boolean;
+  setIsSeeking: (isSeeking: boolean) => void;
 }
 
 // Helper to sync with backend
@@ -81,7 +87,6 @@ export const usePlayerStore = create<PlayerState>()(
       history: [],
       shuffle: false,
       repeat: 'off',
-      autoplay: true,
       isFullPlayer: false,
       isSidebarOpen: false,
       isRightPanelOpen: true,
@@ -145,7 +150,10 @@ export const usePlayerStore = create<PlayerState>()(
       },
 
       nextSong: async () => {
-        const { queue, currentSong, shuffle, repeat, autoplay, loadAutoplayQueue, addToHistory } = get();
+        const { queue, currentSong, shuffle, repeat, loadAutoplayQueue, addToHistory } = get();
+        const settings = useSettingsStore.getState();
+        const autoplay = settings.autoPlay;
+
         if (queue.length === 0) return;
 
         const currentIndex = queue.findIndex((s) => s.id === currentSong?.id);
@@ -192,7 +200,7 @@ export const usePlayerStore = create<PlayerState>()(
 
         // If more than 3 seconds into the song, restart it
         if (progress > 3) {
-          set({ progress: 0 });
+          get().seekTo(0);
           return;
         }
 
@@ -217,7 +225,8 @@ export const usePlayerStore = create<PlayerState>()(
       },
 
       toggleAutoplay: () => {
-        set((state) => ({ autoplay: !state.autoplay }));
+        const settings = useSettingsStore.getState();
+        settings.setSetting('autoPlay', !settings.autoPlay);
       },
 
       setQueue: (songs) => {
@@ -295,6 +304,12 @@ export const usePlayerStore = create<PlayerState>()(
         // Sync to backend
         syncHistoryToBackend(song);
       },
+
+      seekTime: null,
+      seekTo: (time) => set({ seekTime: time }),
+      resetSeek: () => set({ seekTime: null }),
+      isSeeking: false,
+      setIsSeeking: (isSeeking) => set({ isSeeking }),
     }),
     {
       name: 'supersonic-player',
@@ -302,7 +317,6 @@ export const usePlayerStore = create<PlayerState>()(
         volume: state.volume,
         shuffle: state.shuffle,
         repeat: state.repeat,
-        autoplay: state.autoplay,
         history: state.history.slice(0, 20), // Only persist last 20
       }),
     }

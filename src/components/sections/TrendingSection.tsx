@@ -4,6 +4,7 @@ import { SongCard } from '@/components/cards/SongCard';
 import { usePlayerStore, Song } from '@/store/playerStore';
 import { useEffect, useState, useCallback } from 'react';
 import { trendingSongs as mockSongs } from '@/data/mockData';
+import { Link } from 'react-router-dom';
 
 const AUTO_REFRESH_INTERVAL = 10 * 60 * 1000; // 10 minutes
 
@@ -104,13 +105,15 @@ export const TrendingSection = () => {
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           </motion.button>
-          <motion.button
-            whileHover={{ x: 5 }}
-            className="flex items-center gap-1 text-xs sm:text-sm text-muted-foreground hover:text-primary transition-colors"
-          >
-            See all
-            <ChevronRight className="w-4 h-4" />
-          </motion.button>
+          <Link to="/explore">
+            <motion.button
+              whileHover={{ x: 5 }}
+              className="flex items-center gap-1 text-xs sm:text-sm text-muted-foreground hover:text-primary transition-colors"
+            >
+              See all
+              <ChevronRight className="w-4 h-4" />
+            </motion.button>
+          </Link>
         </div>
       </div>
 

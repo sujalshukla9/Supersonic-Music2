@@ -1,7 +1,8 @@
-import { Play, Pause, MoreHorizontal, Heart } from 'lucide-react';
+import { Play, Pause, MoreHorizontal, Heart, Music } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Song, usePlayerStore } from '@/store/playerStore';
 import { useLikesStore } from '@/store/likesStore';
+import { useState } from 'react';
 
 interface SongCardProps {
   song: Song;
@@ -12,6 +13,7 @@ interface SongCardProps {
 export const SongCard = ({ song, index, showIndex }: SongCardProps) => {
   const { currentSong, isPlaying, playSong, togglePlay, queue, setQueue } = usePlayerStore();
   const { isLiked, toggleLike } = useLikesStore();
+  const [imageError, setImageError] = useState(false);
   const isCurrentSong = currentSong?.id === song.id;
   const songIsLiked = isLiked(song.id);
 
@@ -62,12 +64,19 @@ export const SongCard = ({ song, index, showIndex }: SongCardProps) => {
       </div>
 
       {/* Thumbnail */}
-      <div className="relative flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-lg overflow-hidden bg-secondary">
-        <img
-          src={song.thumbnail}
-          alt={song.title}
-          className="w-full h-full object-cover"
-        />
+      <div className="relative flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-lg overflow-hidden bg-secondary flex items-center justify-center">
+        {song.thumbnail && !imageError ? (
+          <img
+            src={song.thumbnail}
+            alt={song.title}
+            className="w-full h-full object-cover"
+            onError={() => setImageError(true)}
+          />
+        ) : (
+          <div className="flex items-center justify-center w-full h-full bg-secondary">
+            <Music className="w-5 h-5 text-muted-foreground" />
+          </div>
+        )}
         {isCurrentSong && isPlaying && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/50">
             <div className="flex items-center gap-0.5">
@@ -94,8 +103,8 @@ export const SongCard = ({ song, index, showIndex }: SongCardProps) => {
       <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
         <motion.button
           className={`p-1.5 sm:p-2 rounded-full transition-colors ${songIsLiked
-              ? 'text-red-500'
-              : 'text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100'
+            ? 'text-red-500'
+            : 'text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100'
             } ${songIsLiked ? 'opacity-100' : ''}`}
           onClick={handleLike}
           whileHover={{ scale: 1.2 }}

@@ -1,6 +1,7 @@
 import { BadgeCheck } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Artist } from '@/data/mockData';
+import { useNavigate } from 'react-router-dom';
 
 interface ArtistCardProps {
   artist: Artist;
@@ -8,12 +9,15 @@ interface ArtistCardProps {
 }
 
 export const ArtistCard = ({ artist, index }: ArtistCardProps) => {
+  const navigate = useNavigate();
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index ? index * 0.1 : 0 }}
       whileHover={{ scale: 1.05 }}
+      onClick={() => navigate(`/artist/${artist.id}`)}
       className="flex flex-col items-center text-center cursor-pointer group flex-shrink-0"
     >
       <div className="relative mb-3 sm:mb-4">

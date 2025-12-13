@@ -45,6 +45,20 @@ export const searchYouTube = async (query: string, maxResults = 20): Promise<You
   return [];
 };
 
+// Search artists
+export const searchArtists = async (query: string, maxResults = 20): Promise<any[]> => {
+  try {
+    const response = await fetch(`${BACKEND_URL}/artists/search?q=${encodeURIComponent(query)}&maxResults=${maxResults}`);
+    if (response.ok) {
+      const data = await response.json();
+      return data.results || [];
+    }
+  } catch (error) {
+    console.error('[Search Artists] Error:', error);
+  }
+  return [];
+};
+
 // Search suggestions
 export const getSearchSuggestions = async (query: string): Promise<string[]> => {
   try {

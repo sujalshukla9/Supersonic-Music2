@@ -1,6 +1,8 @@
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Shuffle, Repeat, Repeat1, ChevronDown, Heart, Share2, ListMusic } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Shuffle, Repeat, Repeat1, ChevronDown, Heart, Share2, ListMusic, Music } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect } from 'react';
 import { usePlayerStore } from '@/store/playerStore';
+import { useLikesStore } from '@/store/likesStore';
 import { Slider } from '@/components/ui/slider';
 
 const formatTime = (seconds: number) => {
@@ -25,12 +27,23 @@ export const FullPlayer = () => {
     setProgress,
     toggleShuffle,
     toggleRepeat,
+    toggleRightPanel,
     toggleFullPlayer,
+    seekTo,
+    setIsSeeking,
   } = usePlayerStore();
+
+  const { isLiked, toggleLike } = useLikesStore();
+
+  const [coverImageError, setCoverImageError] = useState(false);
+
+  useEffect(() => {
+    setCoverImageError(false);
+  }, [currentSong?.id]);
 
   if (!currentSong || !isFullPlayer) return null;
 
-  const progressPercent = (progress / currentSong.durationSeconds) * 100;
+  const duration = currentSong.durationSeconds || 1;
 
   return (
     <AnimatePresence>
@@ -45,7 +58,7 @@ export const FullPlayer = () => {
         <div
           className="absolute inset-0 opacity-30"
           style={{
-            backgroundImage: `url(${currentSong.thumbnail})`,
+            backgroundImage: currentSong.thumbnail && !coverImageError ? `url(${currentSong.thumbnail})` : 'none',
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             filter: 'blur(100px)',
@@ -70,15 +83,20 @@ export const FullPlayer = () => {
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.1 }}
-              className="relative mb-8 sm:mb-12 flex-shrink-0"
+              className="relative mb-8 sm:mb-12 flex-shrink-0 w-64 h-64 sm:w-80 sm:h-80 bg-secondary rounded-3xl flex items-center justify-center shadow-2xl"
             >
-              <motion.img
-                src={currentSong.thumbnail}
-                alt={currentSong.title}
-                className="w-64 h-64 sm:w-80 sm:h-80 rounded-3xl object-cover shadow-2xl"
-                animate={isPlaying ? { rotate: 360 } : { rotate: 0 }}
-                transition={isPlaying ? { duration: 20, repeat: Infinity, ease: 'linear' } : { duration: 0.5 }}
-              />
+              {currentSong.thumbnail && !coverImageError ? (
+                <motion.img
+                  src={currentSong.thumbnail}
+                  alt={currentSong.title}
+                  className="w-full h-full rounded-3xl object-cover"
+                  animate={isPlaying ? { rotate: 360 } : { rotate: 0 }}
+                  transition={isPlaying ? { duration: 20, repeat: Infinity, ease: 'linear' } : { duration: 0.5 }}
+                  onError={() => setCoverImageError(true)}
+                />
+              ) : (
+                <Music className="w-32 h-32 text-muted-foreground" />
+              )}
               <div className="absolute -inset-4 bg-gradient-primary opacity-20 blur-3xl rounded-full -z-10 animate-pulse-glow" />
             </motion.div>
 
@@ -100,13 +118,29 @@ export const FullPlayer = () => {
               transition={{ delay: 0.25 }}
               className="flex items-center gap-6 mb-8"
             >
-              <button className="p-2 rounded-full hover:bg-secondary/50 transition-colors">
-                <Heart className="w-6 h-6" />
+              <button
+                onClick={() => toggleLike(currentSong)}
+                className={`p-2 rounded-full hover:bg-secondary/50 transition-colors ${isLiked(currentSong.id) ? 'text-red-500' : ''}`}
+              >
+                <Heart className={`w-6 h-6 ${isLiked(currentSong.id) ? 'fill-current' : ''}`} />
               </button>
-              <button className="p-2 rounded-full hover:bg-secondary/50 transition-colors">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/track/${currentSong.id}`);
+                }}
+                className="p-2 rounded-full hover:bg-secondary/50 transition-colors"
+              >
                 <Share2 className="w-6 h-6" />
               </button>
-              <button className="p-2 rounded-full hover:bg-secondary/50 transition-colors">
+              <button
+                onClick={() => {
+                  toggleFullPlayer();
+                  if (!usePlayerStore.getState().isRightPanelOpen) {
+                    toggleRightPanel();
+                  }
+                }}
+                className="p-2 rounded-full hover:bg-secondary/50 transition-colors"
+              >
                 <ListMusic className="w-6 h-6" />
               </button>
             </motion.div>
@@ -119,11 +153,22 @@ export const FullPlayer = () => {
               className="w-full max-w-md mb-8"
             >
               <Slider
-                value={[progressPercent]}
-                max={100}
-                step={0.1}
-                onValueChange={(value) => setProgress((value[0] / 100) * currentSong.durationSeconds)}
-                className="mb-2"
+                value={[progress]}
+                max={duration}
+                step={1}
+                onValueChange={(value) => {
+                  setIsSeeking(true);
+                  setProgress(value[0]);
+                }}
+                onValueCommit={(value) => {
+                  // Seeking not supported on proxy streams, but we call seekTo anyway
+                  // The seek effect in RightPlayer handles the limitation
+                  if (value[0] >= 0) {
+                    seekTo(value[0]);
+                  }
+                }}
+                onPointerDown={() => setIsSeeking(true)}
+                className="mb-2 cursor-pointer"
               />
               <div className="flex justify-between text-sm text-muted-foreground">
                 <span>{formatTime(progress)}</span>

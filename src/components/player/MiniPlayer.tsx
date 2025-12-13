@@ -1,4 +1,5 @@
-import { Play, Pause, SkipBack, SkipForward, Volume2, ChevronUp, ListMusic } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, ChevronUp, ListMusic, Music } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayerStore } from '@/store/playerStore';
 import { Slider } from '@/components/ui/slider';
@@ -17,6 +18,12 @@ export const MiniPlayer = () => {
     isRightPanelOpen,
     toggleRightPanel,
   } = usePlayerStore();
+
+  const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    setImageError(false);
+  }, [currentSong?.id]);
 
   if (!currentSong) return null;
 
@@ -47,11 +54,18 @@ export const MiniPlayer = () => {
               whileHover={{ scale: 1.05 }}
               onClick={toggleFullPlayer}
             >
-              <img
-                src={currentSong.thumbnail}
-                alt={currentSong.title}
-                className="w-full h-full object-cover"
-              />
+              {currentSong.thumbnail && !imageError ? (
+                <img
+                  src={currentSong.thumbnail}
+                  alt={currentSong.title}
+                  className="w-full h-full object-cover"
+                  onError={() => setImageError(true)}
+                />
+              ) : (
+                <div className="w-full h-full bg-secondary flex items-center justify-center">
+                  <Music className="w-6 h-6 text-muted-foreground" />
+                </div>
+              )}
             </motion.div>
             <div className="min-w-0 cursor-pointer" onClick={toggleFullPlayer}>
               <h4 className="font-medium text-sm text-foreground truncate">{currentSong.title}</h4>

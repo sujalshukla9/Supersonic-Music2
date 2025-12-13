@@ -2,9 +2,16 @@ node_modules
 npm-debug.log
 .env
 .env.local
+.env.example
 .git
 .gitignore
 *.md
 .DS_Store
 Thumbs.db
 database.json
+*.webm
+*.mp3
+*.wav
+render.yaml
+railway.toml
+nixpacks.toml

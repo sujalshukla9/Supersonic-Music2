@@ -1,6 +1,7 @@
-import { Play } from 'lucide-react';
+import { Play, ListMusic } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Playlist } from '@/data/mockData';
+import { useState } from 'react';
 
 interface PlaylistCardProps {
   playlist: Playlist;
@@ -8,6 +9,8 @@ interface PlaylistCardProps {
 }
 
 export const PlaylistCard = ({ playlist, index }: PlaylistCardProps) => {
+  const [imageError, setImageError] = useState(false);
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
@@ -16,14 +19,21 @@ export const PlaylistCard = ({ playlist, index }: PlaylistCardProps) => {
       whileHover={{ scale: 1.03 }}
       className="relative group cursor-pointer"
     >
-      <div className="relative aspect-square rounded-xl sm:rounded-2xl overflow-hidden">
-        <img
-          src={playlist.thumbnail}
-          alt={playlist.name}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-        />
+      <div className="relative aspect-square rounded-xl sm:rounded-2xl overflow-hidden bg-secondary">
+        {playlist.thumbnail && !imageError ? (
+          <img
+            src={playlist.thumbnail}
+            alt={playlist.name}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+            onError={() => setImageError(true)}
+          />
+        ) : (
+          <div className={`w-full h-full flex items-center justify-center bg-gradient-to-t ${playlist.gradient}`}>
+            <ListMusic className="w-1/3 h-1/3 text-white/50" />
+          </div>
+        )}
         <div className={`absolute inset-0 bg-gradient-to-t ${playlist.gradient} opacity-60`} />
-        
+
         {/* Play Button */}
         <motion.button
           initial={{ opacity: 0, scale: 0.8 }}

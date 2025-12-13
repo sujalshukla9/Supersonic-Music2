@@ -1,4 +1,4 @@
-import { MainLayout } from '@/components/layout/MainLayout';
+
 import { GenreCard } from '@/components/cards/GenreCard';
 import { PlaylistCard } from '@/components/cards/PlaylistCard';
 import { SongCard } from '@/components/cards/SongCard';
@@ -87,124 +87,123 @@ const Explore = () => {
         <title>Explore - Supersonic Music</title>
         <meta name="description" content="Explore new music, genres, and playlists on Supersonic Music. Discover your next favorite song." />
       </Helmet>
-      <MainLayout>
-        <div className="space-y-10">
-          {/* Header */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <h1 className="text-4xl font-bold mb-2">Explore</h1>
-            <p className="text-muted-foreground text-lg">
-              Discover new music and artists
-            </p>
-          </motion.div>
 
-          {/* Genres */}
-          <section>
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 rounded-xl bg-accent/10">
-                <Sparkles className="w-5 h-5 text-accent" />
+      <div className="space-y-10">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <h1 className="text-4xl font-bold mb-2">Explore</h1>
+          <p className="text-muted-foreground text-lg">
+            Discover new music and artists
+          </p>
+        </motion.div>
+
+        {/* Genres */}
+        <section>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 rounded-xl bg-accent/10">
+              <Sparkles className="w-5 h-5 text-accent" />
+            </div>
+            <h2 className="text-2xl font-bold">Browse by Genre</h2>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {genres.map((genre, index) => (
+              <GenreCard key={genre.id} genre={genre} index={index} />
+            ))}
+          </div>
+        </section>
+
+        {/* New Releases - Now Dynamic */}
+        <section>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-primary/10">
+                <Clock className="w-5 h-5 text-primary" />
               </div>
-              <h2 className="text-2xl font-bold">Browse by Genre</h2>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {genres.map((genre, index) => (
-                <GenreCard key={genre.id} genre={genre} index={index} />
-              ))}
-            </div>
-          </section>
-
-          {/* New Releases - Now Dynamic */}
-          <section>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-primary/10">
-                  <Clock className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold">New Releases</h2>
-                  {lastUpdated && (
-                    <p className="text-xs text-muted-foreground">
-                      Updated {formatLastUpdated(lastUpdated)} • Auto-refreshes every 5 min
-                    </p>
-                  )}
-                </div>
-              </div>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => fetchNewReleases(true)}
-                disabled={isRefreshing || isLoadingReleases}
-                className="flex items-center gap-2 px-4 py-2 rounded-full bg-secondary/50 hover:bg-secondary text-sm font-medium transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                Refresh
-              </motion.button>
-            </div>
-
-            <div className="glass-card p-4 relative overflow-hidden">
-              {/* Loading Overlay */}
-              <AnimatePresence>
-                {isLoadingReleases && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-background/50 backdrop-blur-sm flex items-center justify-center z-10"
-                  >
-                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                  </motion.div>
+              <div>
+                <h2 className="text-2xl font-bold">New Releases</h2>
+                {lastUpdated && (
+                  <p className="text-xs text-muted-foreground">
+                    Updated {formatLastUpdated(lastUpdated)} • Auto-refreshes every 5 min
+                  </p>
                 )}
-              </AnimatePresence>
+              </div>
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => fetchNewReleases(true)}
+              disabled={isRefreshing || isLoadingReleases}
+              className="flex items-center gap-2 px-4 py-2 rounded-full bg-secondary/50 hover:bg-secondary text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </motion.button>
+          </div>
 
-              {/* Refreshing Indicator */}
-              {isRefreshing && !isLoadingReleases && (
+          <div className="glass-card p-4 relative overflow-hidden">
+            {/* Loading Overlay */}
+            <AnimatePresence>
+              {isLoadingReleases && (
                 <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="absolute top-2 right-2 flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 text-primary text-xs font-medium z-10"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-background/50 backdrop-blur-sm flex items-center justify-center z-10"
                 >
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Updating...
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
                 </motion.div>
               )}
+            </AnimatePresence>
 
-              <div className="space-y-1">
-                <AnimatePresence mode="popLayout">
-                  {newReleases.map((song, index) => (
-                    <motion.div
-                      key={song.id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 20 }}
-                      transition={{ delay: index * 0.05 }}
-                    >
-                      <SongCard song={song} index={index} />
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
-            </div>
-          </section>
+            {/* Refreshing Indicator */}
+            {isRefreshing && !isLoadingReleases && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="absolute top-2 right-2 flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 text-primary text-xs font-medium z-10"
+              >
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Updating...
+              </motion.div>
+            )}
 
-          {/* Hot Playlists */}
-          <section>
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 rounded-xl bg-orange-500/10">
-                <Flame className="w-5 h-5 text-orange-500" />
-              </div>
-              <h2 className="text-2xl font-bold">Hot Playlists</h2>
+            <div className="space-y-1">
+              <AnimatePresence mode="popLayout">
+                {newReleases.map((song, index) => (
+                  <motion.div
+                    key={song.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <SongCard song={song} index={index} />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-              {playlists.map((playlist, index) => (
-                <PlaylistCard key={playlist.id} playlist={playlist} index={index} />
-              ))}
+          </div>
+        </section>
+
+        {/* Hot Playlists */}
+        <section>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 rounded-xl bg-orange-500/10">
+              <Flame className="w-5 h-5 text-orange-500" />
             </div>
-          </section>
-        </div>
-      </MainLayout>
+            <h2 className="text-2xl font-bold">Hot Playlists</h2>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+            {playlists.map((playlist, index) => (
+              <PlaylistCard key={playlist.id} playlist={playlist} index={index} />
+            ))}
+          </div>
+        </section>
+      </div>
     </>
   );
 };

@@ -1,5 +1,5 @@
+
 import { useParams, useNavigate } from 'react-router-dom';
-import { MainLayout } from '@/components/layout/MainLayout';
 import { SongCard } from '@/components/cards/SongCard';
 import { genres, trendingSongs } from '@/data/mockData';
 import { searchYouTube, durationToSeconds } from '@/lib/youtube';
@@ -94,109 +94,108 @@ const Genre = () => {
                 <title>{displayName} - Supersonic Music</title>
                 <meta name="description" content={`Listen to the best ${displayName} music on Supersonic Music.`} />
             </Helmet>
-            <MainLayout>
-                <div className="space-y-8">
-                    {/* Header */}
+
+            <div className="space-y-8">
+                {/* Header */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="relative"
+                >
+                    {/* Back Button */}
+                    <button
+                        onClick={() => navigate(-1)}
+                        className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-6"
+                    >
+                        <ArrowLeft className="w-5 h-5" />
+                        <span className="text-sm font-medium">Back</span>
+                    </button>
+
+                    {/* Genre Hero */}
+                    <div className="flex flex-col md:flex-row items-center md:items-end gap-6 md:gap-8">
+                        {/* Genre Icon */}
+                        <div className={`w-48 h-48 md:w-56 md:h-56 rounded-2xl bg-gradient-to-br ${gradientClass} flex items-center justify-center shadow-glow relative overflow-hidden`}>
+                            {genre?.image && (
+                                <img
+                                    src={genre.image}
+                                    alt={displayName}
+                                    className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-50"
+                                />
+                            )}
+                            <Music className="w-20 h-20 md:w-24 md:h-24 text-white/90 drop-shadow-lg" />
+                        </div>
+
+                        {/* Genre Info */}
+                        <div className="flex-1 text-center md:text-left">
+                            <p className="text-sm font-medium text-primary uppercase tracking-wider mb-2">
+                                Genre
+                            </p>
+                            <h1 className="text-4xl md:text-6xl font-bold mb-4">{displayName}</h1>
+                            <p className="text-muted-foreground mb-6">
+                                {isLoading ? 'Loading songs...' : `${songs.length} songs`}
+                            </p>
+
+                            {/* Action Buttons */}
+                            <div className="flex items-center gap-4 justify-center md:justify-start">
+                                <motion.button
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={handlePlayAll}
+                                    disabled={isLoading || songs.length === 0}
+                                    className="flex items-center gap-2 px-8 py-3 rounded-full bg-gradient-primary text-primary-foreground font-semibold glow-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <Play className="w-5 h-5" />
+                                    Play All
+                                </motion.button>
+                                <motion.button
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={handleShuffle}
+                                    disabled={isLoading || songs.length === 0}
+                                    className="flex items-center gap-2 px-6 py-3 rounded-full border border-border/50 font-semibold hover:bg-secondary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <Shuffle className="w-5 h-5" />
+                                    Shuffle
+                                </motion.button>
+                            </div>
+                        </div>
+                    </div>
+                </motion.div>
+
+                {/* Songs List */}
+                {isLoading ? (
+                    <div className="flex items-center justify-center py-20">
+                        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                    </div>
+                ) : songs.length > 0 ? (
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="relative"
+                        transition={{ delay: 0.2 }}
+                        className="glass-card p-4"
                     >
-                        {/* Back Button */}
-                        <button
-                            onClick={() => navigate(-1)}
-                            className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-6"
-                        >
-                            <ArrowLeft className="w-5 h-5" />
-                            <span className="text-sm font-medium">Back</span>
-                        </button>
-
-                        {/* Genre Hero */}
-                        <div className="flex flex-col md:flex-row items-center md:items-end gap-6 md:gap-8">
-                            {/* Genre Icon */}
-                            <div className={`w-48 h-48 md:w-56 md:h-56 rounded-2xl bg-gradient-to-br ${gradientClass} flex items-center justify-center shadow-glow relative overflow-hidden`}>
-                                {genre?.image && (
-                                    <img
-                                        src={genre.image}
-                                        alt={displayName}
-                                        className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-50"
-                                    />
-                                )}
-                                <Music className="w-20 h-20 md:w-24 md:h-24 text-white/90 drop-shadow-lg" />
-                            </div>
-
-                            {/* Genre Info */}
-                            <div className="flex-1 text-center md:text-left">
-                                <p className="text-sm font-medium text-primary uppercase tracking-wider mb-2">
-                                    Genre
-                                </p>
-                                <h1 className="text-4xl md:text-6xl font-bold mb-4">{displayName}</h1>
-                                <p className="text-muted-foreground mb-6">
-                                    {isLoading ? 'Loading songs...' : `${songs.length} songs`}
-                                </p>
-
-                                {/* Action Buttons */}
-                                <div className="flex items-center gap-4 justify-center md:justify-start">
-                                    <motion.button
-                                        whileHover={{ scale: 1.05 }}
-                                        whileTap={{ scale: 0.95 }}
-                                        onClick={handlePlayAll}
-                                        disabled={isLoading || songs.length === 0}
-                                        className="flex items-center gap-2 px-8 py-3 rounded-full bg-gradient-primary text-primary-foreground font-semibold glow-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <Play className="w-5 h-5" />
-                                        Play All
-                                    </motion.button>
-                                    <motion.button
-                                        whileHover={{ scale: 1.05 }}
-                                        whileTap={{ scale: 0.95 }}
-                                        onClick={handleShuffle}
-                                        disabled={isLoading || songs.length === 0}
-                                        className="flex items-center gap-2 px-6 py-3 rounded-full border border-border/50 font-semibold hover:bg-secondary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <Shuffle className="w-5 h-5" />
-                                        Shuffle
-                                    </motion.button>
-                                </div>
-                            </div>
+                        <div className="space-y-1">
+                            {songs.map((song, index) => (
+                                <SongCard key={song.id} song={song} index={index} showIndex />
+                            ))}
                         </div>
                     </motion.div>
-
-                    {/* Songs List */}
-                    {isLoading ? (
-                        <div className="flex items-center justify-center py-20">
-                            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                ) : (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex flex-col items-center justify-center py-20 text-center"
+                    >
+                        <div className="p-6 rounded-full bg-secondary/50 mb-6">
+                            <Music className="w-12 h-12 text-muted-foreground" />
                         </div>
-                    ) : songs.length > 0 ? (
-                        <motion.div
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.2 }}
-                            className="glass-card p-4"
-                        >
-                            <div className="space-y-1">
-                                {songs.map((song, index) => (
-                                    <SongCard key={song.id} song={song} index={index} showIndex />
-                                ))}
-                            </div>
-                        </motion.div>
-                    ) : (
-                        <motion.div
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="flex flex-col items-center justify-center py-20 text-center"
-                        >
-                            <div className="p-6 rounded-full bg-secondary/50 mb-6">
-                                <Music className="w-12 h-12 text-muted-foreground" />
-                            </div>
-                            <h2 className="text-2xl font-bold mb-2">No songs found</h2>
-                            <p className="text-muted-foreground max-w-md">
-                                We couldn't find any songs for this genre. Try browsing another genre.
-                            </p>
-                        </motion.div>
-                    )}
-                </div>
-            </MainLayout>
+                        <h2 className="text-2xl font-bold mb-2">No songs found</h2>
+                        <p className="text-muted-foreground max-w-md">
+                            We couldn't find any songs for this genre. Try browsing another genre.
+                        </p>
+                    </motion.div>
+                )}
+            </div>
         </>
     );
 };

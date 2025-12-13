@@ -1,10 +1,13 @@
 import express from 'express';
 import cors from 'cors';
-import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { Innertube, UniversalCache } from 'youtubei.js';
+import { exec, spawn } from 'child_process';
+import { promisify } from 'util';
+import ytdl from '@distube/ytdl-core';
+
+const execAsync = promisify(exec);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,21 +17,6 @@ const PORT = process.env.PORT || 3001;
 
 // Configuration
 const DEFAULT_REGION = process.env.REGION || 'IN';
-
-// YouTube Client
-let yt = null;
-const initYouTube = async () => {
-    try {
-        yt = await Innertube.create({
-            cache: new UniversalCache(false),
-            generate_session_locally: true
-        });
-        console.log('[YouTube] Client initialized');
-    } catch (e) {
-        console.error('[YouTube] Init error:', e);
-    }
-};
-initYouTube();
 
 const YT_API_KEY = process.env.YT_KEY || 'AIzaSyD19rb22YPwhrDDv4-FqBY5DQRUPfs24fE';
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
@@ -142,12 +130,22 @@ function formatDuration(seconds) {
 
 function parseDuration(duration) {
     if (!duration) return 0;
-    const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-    if (!match) return 0;
-    const hours = parseInt(match[1] || '0');
-    const minutes = parseInt(match[2] || '0');
-    const seconds = parseInt(match[3] || '0');
-    return hours * 3600 + minutes * 60 + seconds;
+    const matchISO = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    if (matchISO) {
+        const hours = parseInt(matchISO[1] || '0');
+        const minutes = parseInt(matchISO[2] || '0');
+        const seconds = parseInt(matchISO[3] || '0');
+        return hours * 3600 + minutes * 60 + seconds;
+    }
+
+    // Try M:S or H:M:S
+    if (duration.includes(':')) {
+        const parts = duration.split(':').map(Number);
+        if (parts.length === 2) return parts[0] * 60 + parts[1];
+        if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+
+    return 0;
 }
 
 function formatDurationFromISO(duration) {
@@ -186,180 +184,168 @@ function extractMoodTags(title) {
 // YOUTUBE DATA API FUNCTIONS
 // ============================================
 
-async function youtubeApiCall(endpoint, params) {
-    const url = new URL(`${YOUTUBE_API_BASE}/${endpoint}`);
-    url.searchParams.set('key', YT_API_KEY);
-    for (const [key, value] of Object.entries(params)) {
-        url.searchParams.set(key, value);
-    }
+// Run music_api.py
+async function runMusicApi(command, ...args) {
+    try {
+        // Simple argument escaping
+        const escapedArgs = args.map(arg => {
+            // If it's a number, don't escape
+            if (typeof arg === 'number') return arg;
+            // Escape double quotes and wrap in double quotes
+            return `"${String(arg).replace(/"/g, '\\"')}"`;
+        }).join(' ');
 
-    const response = await fetch(url.toString());
-    if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error?.message || `API Error: ${response.status}`);
+        const cmd = `python music_api.py ${command} ${escapedArgs}`;
+        // console.log(`[MusicAPI] Running: ${cmd}`);
+
+        const { stdout } = await execAsync(cmd, { cwd: __dirname });
+
+        try {
+            return JSON.parse(stdout);
+        } catch (e) {
+            console.error('[MusicAPI] JSON Parse error. Output:', stdout.substring(0, 200));
+            return null;
+        }
+    } catch (e) {
+        console.error('[MusicAPI] Exec error:', e.message);
+        return null;
     }
-    return response.json();
 }
 
-// Search videos
-async function searchVideos(query, maxResults = 30, type = 'video') {
-    const cacheKey = `search:${query}:${maxResults}`;
+// Search videos using ytmusicapi
+async function searchVideos(query, maxResults = 20, type = 'songs') {
+    const cacheKey = `search:${query}:${type}:${maxResults}`;
     const cached = searchCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < SEARCH_CACHE_DURATION) {
-        console.log(`[Search] Cache hit for: ${query}`);
         return cached.data;
     }
 
-    if (!yt) {
-        console.error('[Search] YouTube client not initialized');
+    // Map 'video' to 'songs' or 'videos' for ytmusicapi
+    // type: songs, videos, albums, artists, playlists
+    let filter = type;
+    if (type === 'video') filter = 'songs'; // Prefer songs for general video search
+    if (type === 'channel') filter = 'artists';
+
+    console.log(`[Search] Searching for: ${query} (filter: ${filter})`);
+
+    const results = await runMusicApi('search', query, filter || 'songs');
+
+    if (!results || !Array.isArray(results)) {
+        console.log('[Search] No results or error');
         return [];
     }
 
-    try {
-        console.log(`[Search] Searching for: ${query}`);
-        const search = await yt.search(query);
-        let items = search.results || [];
-
-        console.log(`[Search] Found ${items.length} raw results`);
-
-        // Log found types for debugging
-        const foundTypes = [...new Set(items.map(i => i.type))];
-        console.log(`[Search] Item types found: ${foundTypes.join(', ')}`);
-
-        // Expand shelf/container items to extract videos within them
-        const expandedItems = [];
-        for (const item of items) {
-            if (item.type === 'Video' || item.type === 'CompactVideo' || item.type === 'GridVideo') {
-                expandedItems.push(item);
-            } else if (item.type === 'LockupView') {
-                // LockupView is a newer container format - extract video info if available
-                if (item.content_id || item.id) {
-                    expandedItems.push({
-                        ...item,
-                        id: item.content_id || item.id,
-                        type: 'Video'
-                    });
-                }
-            } else if (item.type === 'Shelf' || item.type === 'GridShelfView' || item.type === 'RichShelf') {
-                // Extract videos from shelves
-                const shelfContent = item.content?.items || item.items || item.contents || [];
-                for (const subItem of shelfContent) {
-                    if (subItem.type === 'Video' || subItem.type === 'CompactVideo' || subItem.type === 'GridVideo' || subItem.id) {
-                        expandedItems.push(subItem);
-                    }
-                }
-            } else if (item.id && typeof item.id === 'string' && item.id.length === 11) {
-                // Has video ID, so it's likely a video
-                expandedItems.push(item);
-            }
+    const items = results.slice(0, maxResults).map(item => {
+        // Extract thumbnails
+        let thumbnail = '';
+        if (item.thumbnails && Array.isArray(item.thumbnails)) {
+            thumbnail = item.thumbnails[item.thumbnails.length - 1]?.url || '';
         }
 
-        // If we got more items from expansion, use those
-        if (expandedItems.length > 0) {
-            items = expandedItems;
-            console.log(`[Search] Expanded to ${items.length} items from containers`);
+        // Extract artist
+        let artistName = '';
+        let artistId = '';
+        if (item.artists && Array.isArray(item.artists)) {
+            artistName = item.artists.map(a => a.name).join(', ');
+            artistId = item.artists[0]?.id || '';
         }
 
-        // Filter by type if specified
-        if (type === 'video') {
-            // Accept various video types from YouTube
-            const videoTypes = ['Video', 'CompactVideo', 'GridVideo', 'PlaylistVideo', 'VideoWithContext', 'ReelItem'];
-            items = items.filter(i => {
-                // Check if it's a video type
-                if (videoTypes.some(t => i.type?.includes(t))) return true;
-                // Also include items that have a video ID (some items don't have explicit type)
-                if (i.id && typeof i.id === 'string' && i.id.length === 11) return true;
-                return false;
-            });
-        } else if (type === 'channel') {
-            items = items.filter(i => i.type === 'Channel' || i.type === 'CompactChannel');
-        } else if (type === 'playlist') {
-            items = items.filter(i => i.type === 'Playlist' || i.type === 'CompactPlaylist' || i.type === 'GridPlaylist');
-        }
+        // Different ID fields based on type
+        const id = item.videoId || item.browseId || item.id;
 
-        console.log(`[Search] ${items.length} items after type filter`);
+        return {
+            id: id,
+            title: item.title,
+            artist: artistName,
+            channelId: artistId,
+            thumbnail: thumbnail,
+            description: item.description || '',
+            duration: item.duration || '0:00',
+            durationSeconds: parseDuration(item.duration || '0:00'),
+            type: item.resultType || type
+        };
+    }).filter(i => i.id); // Ensure ID exists
 
-        const results = items.slice(0, maxResults).map(item => {
-            // Get the best thumbnail
-            let thumbnail = '';
-            if (item.thumbnails && Array.isArray(item.thumbnails)) {
-                // Try to get highest quality thumbnail
-                const sorted = [...item.thumbnails].sort((a, b) => (b.width || 0) - (a.width || 0));
-                thumbnail = sorted[0]?.url || item.thumbnails[0]?.url || item.thumbnails[0] || '';
-            }
-
-            // Fallback to YouTube thumbnail URL if empty
-            if (!thumbnail && item.id) {
-                thumbnail = `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`;
-            }
-
-            return {
-                id: item.id,
-                title: item.title?.text || item.title || '',
-                artist: item.author?.name || item.channel?.name || item.owner?.name || '',
-                channelId: item.author?.id || item.channel?.id || item.owner?.id || '',
-                thumbnail: thumbnail,
-                publishedAt: item.published?.text || '',
-                description: item.description?.text || item.description || '',
-                duration: item.duration?.text || '3:30',
-                durationSeconds: item.duration?.seconds || 210,
-                viewCount: item.view_count?.text || item.views?.text || ''
-            };
-        });
-
-        console.log(`[Search] Returning ${results.length} results for: ${query}`);
-        searchCache.set(cacheKey, { data: results, timestamp: Date.now() });
-        return results;
-    } catch (e) {
-        console.error('[Search] Error:', e.message);
-        return [];
-    }
+    console.log(`[Search] Found ${items.length} items`);
+    searchCache.set(cacheKey, { data: items, timestamp: Date.now() });
+    return items;
 }
 
+
+// Get video details
 // Get video details
 async function getVideoDetails(videoIds) {
     const ids = Array.isArray(videoIds) ? videoIds : [videoIds];
-    const uncachedIds = ids.filter(id => {
+    const uniqueIds = [...new Set(ids)];
+
+    const uncachedIds = uniqueIds.filter(id => {
         const cached = metadataCache.get(id);
         return !cached || Date.now() - cached.timestamp > METADATA_CACHE_DURATION;
     });
 
-    if (uncachedIds.length > 0 && yt) {
+    if (uncachedIds.length > 0) {
         try {
-            const promises = uncachedIds.map(async (id) => {
-                try {
-                    const info = await yt.getBasicInfo(id);
-                    const basic = info.basic_info;
-                    return {
-                        id: basic.id,
-                        title: basic.title,
-                        artist: basic.channel?.name || '',
-                        channelId: basic.channel?.id || '',
-                        thumbnail: basic.thumbnail?.[0]?.url || '',
-                        duration: formatDuration(basic.duration || 0),
-                        durationSeconds: basic.duration || 0,
-                        publishedAt: '',
-                        description: basic.short_description || '',
-                        tags: basic.keywords || [],
-                        viewCount: basic.view_count || 0,
-                        likeCount: basic.like_count || 0,
-                        moods: extractMoodTags(basic.title)
-                    };
-                } catch (e) { return null; }
-            });
+            // Fetch in batches if necessary, but music_api.py handles comma separated
+            // Join with commas
+            const idString = uncachedIds.join(',');
+            const items = await runMusicApi('get_song', idString);
 
-            const items = (await Promise.all(promises)).filter(Boolean);
-            for (const item of items) {
-                metadataCache.set(item.id, { data: item, timestamp: Date.now() });
+            if (Array.isArray(items)) {
+                for (const item of items) {
+                    if (!item || !item.videoDetails) continue;
+
+                    // Structure from ytmusicapi get_song is different?
+                    // Actually get_song returns specific structure.
+                    // output of get_song: { videoDetails: {...}, microformat: {...} }
+
+                    const details = item.videoDetails;
+                    const micro = item.microformat?.microformatDataRenderer || {};
+
+                    const data = {
+                        id: details.videoId,
+                        title: details.title,
+                        artist: details.author,
+                        channelId: details.channelId,
+                        thumbnail: details.thumbnail?.thumbnails?.[details.thumbnail.thumbnails.length - 1]?.url || '',
+                        duration: formatDuration(parseInt(details.lengthSeconds || 0)),
+                        durationSeconds: parseInt(details.lengthSeconds || 0),
+                        publishedAt: micro.publishDate || '',
+                        description: details.shortDescription || '',
+                        viewCount: details.viewCount,
+                        moods: extractMoodTags(details.title)
+                    };
+
+                    metadataCache.set(data.id, { data, timestamp: Date.now() });
+                }
+            } else if (items && items.videoDetails) {
+                // Single result
+                const details = items.videoDetails;
+                const micro = items.microformat?.microformatDataRenderer || {};
+
+                const data = {
+                    id: details.videoId,
+                    title: details.title,
+                    artist: details.author,
+                    channelId: details.channelId,
+                    thumbnail: details.thumbnail?.thumbnails?.[details.thumbnail.thumbnails.length - 1]?.url || '',
+                    duration: formatDuration(parseInt(details.lengthSeconds || 0)),
+                    durationSeconds: parseInt(details.lengthSeconds || 0),
+                    publishedAt: micro.publishDate || '',
+                    description: details.shortDescription || '',
+                    viewCount: details.viewCount,
+                    moods: extractMoodTags(details.title)
+                };
+                metadataCache.set(data.id, { data, timestamp: Date.now() });
             }
         } catch (e) {
             console.error('[Video Details] Error:', e.message);
         }
     }
 
-    return ids.map(id => metadataCache.get(id)?.data).filter(Boolean);
+    return uniqueIds.map(id => metadataCache.get(id)?.data).filter(Boolean);
 }
 
+// Get trending music
 // Get trending music
 async function getTrendingMusic(maxResults = 25) {
     if (trendingCache.data && Date.now() - trendingCache.timestamp < TRENDING_CACHE_DURATION) {
@@ -367,12 +353,39 @@ async function getTrendingMusic(maxResults = 25) {
     }
 
     try {
-        const results = await searchVideos(`trending music ${DEFAULT_REGION} top 50`, maxResults);
-        const ranked = results.map((r, i) => ({ ...r, rank: i + 1, moods: extractMoodTags(r.title) }));
+        // Use ytmusicapi charts
+        const charts = await runMusicApi('get_charts');
+        let tracks = [];
 
-        trendingCache.data = ranked;
+        // charts has structure: { countries: {...}, global: {...}, trending: { items: [...] } }
+        // get_charts('IN') returns data for India
+        if (charts && charts.trending && charts.trending.items) {
+            tracks = charts.trending.items;
+        } else if (charts && typeof charts === 'object') {
+            // Maybe it returned a different structure?
+            // Fallback to search if charts fail
+        }
+
+        if (tracks.length === 0) {
+            // Fallback to search
+            return await searchVideos('trending music india', maxResults);
+        }
+
+        const results = tracks.slice(0, maxResults).map((item, index) => {
+            return {
+                id: item.videoId,
+                title: item.title,
+                artist: item.artists ? item.artists.map(a => a.name).join(', ') : '',
+                channelId: item.artists ? item.artists[0]?.id : '',
+                thumbnail: item.thumbnails[item.thumbnails.length - 1].url,
+                rank: index + 1,
+                moods: extractMoodTags(item.title)
+            };
+        });
+
+        trendingCache.data = results;
         trendingCache.timestamp = Date.now();
-        return ranked;
+        return results;
     } catch (e) {
         console.error('[Trending] Error:', e.message);
         return [];
@@ -381,20 +394,22 @@ async function getTrendingMusic(maxResults = 25) {
 
 // Get related videos (for autoplay)
 // Get related videos (for autoplay)
-async function getRelatedVideos(videoId, maxResults = 15) {
-    if (!yt) return [];
+// Get related videos (for autoplay)
+async function getRelatedVideos(videoId, maxResults = 20) {
     try {
-        const info = await yt.getInfo(videoId);
-        const related = info.watch_next_feed || [];
+        const playlist = await runMusicApi('get_watch_playlist', videoId, maxResults);
 
-        const items = related.filter(item => item.type === 'CompactVideo').slice(0, maxResults);
+        if (!playlist || !playlist.tracks) return [];
 
-        return items.map(item => ({
-            id: item.id,
-            title: item.title?.text || '',
-            artist: item.author?.name || '',
-            channelId: item.author?.id || '',
-            thumbnail: item.thumbnails?.[0]?.url || ''
+        return playlist.tracks.map(track => ({
+            id: track.videoId,
+            title: track.title,
+            artist: track.artists ? track.artists.map(a => a.name).join(', ') : (track.byline || ''),
+            channelId: track.artists ? track.artists[0]?.id : '',
+            thumbnail: track.thumbnail ? track.thumbnail.map(t => t.url).pop() : '',
+            duration: track.length || '',
+            durationSeconds: parseDuration(track.length || ''),
+            isExplicit: track.isExplicit
         }));
     } catch (e) {
         console.error('[Related] Error:', e.message);
@@ -403,89 +418,116 @@ async function getRelatedVideos(videoId, maxResults = 15) {
 }
 
 // Get channel/artist details
+// Get channel/artist details
 async function getChannelDetails(channelId) {
     const cached = artistCache.get(channelId);
     if (cached && Date.now() - cached.timestamp < METADATA_CACHE_DURATION) {
         return cached.data;
     }
 
-    const data = await youtubeApiCall('channels', {
-        part: 'snippet,statistics,brandingSettings',
-        id: channelId
-    });
+    try {
+        const artist = await runMusicApi('get_artist', channelId);
+        if (!artist) return null;
 
-    const channel = data.items?.[0];
-    if (!channel) return null;
+        const result = {
+            id: channelId,
+            name: artist.name,
+            description: artist.description || '',
+            thumbnail: artist.thumbnails?.[artist.thumbnails.length - 1]?.url || '',
+            banner: artist.banner?.url || '',
+            subscriberCount: artist.subscribers || '',
+            videoCount: 0,
+            verified: true
+        };
 
-    const result = {
-        id: channel.id,
-        name: channel.snippet.title,
-        description: channel.snippet.description,
-        thumbnail: channel.snippet.thumbnails?.high?.url || channel.snippet.thumbnails?.medium?.url,
-        banner: channel.brandingSettings?.image?.bannerExternalUrl,
-        subscriberCount: parseInt(channel.statistics?.subscriberCount || 0),
-        videoCount: parseInt(channel.statistics?.videoCount || 0),
-        viewCount: parseInt(channel.statistics?.viewCount || 0),
-        verified: channel.snippet.customUrl ? true : false
-    };
-
-    artistCache.set(channelId, { data: result, timestamp: Date.now() });
-    return result;
+        artistCache.set(channelId, { data: result, timestamp: Date.now() });
+        return result;
+    } catch (e) {
+        console.error('[Artist] Error:', e.message);
+        return null;
+    }
 }
 
 // Get channel videos (artist's songs)
 async function getChannelVideos(channelId, maxResults = 20) {
-    const data = await youtubeApiCall('search', {
-        part: 'snippet',
-        channelId,
-        type: 'video',
-        order: 'viewCount',
-        maxResults
-    });
+    try {
+        const artist = await runMusicApi('get_artist', channelId);
+        // get_artist returns sections like "songs", "singles", "albums", "videos"
+        // We want 'songs' or 'videos'
 
-    const videoIds = data.items?.map(item => item.id.videoId).filter(Boolean) || [];
-    if (videoIds.length === 0) return [];
+        let tracks = [];
+        if (artist && artist.songs && artist.songs.results) {
+            tracks = artist.songs.results;
+        } else if (artist && artist.videos && artist.videos.results) {
+            tracks = artist.videos.results;
+        }
 
-    return await getVideoDetails(videoIds);
+        return tracks.slice(0, maxResults).map(track => ({
+            id: track.videoId,
+            title: track.title,
+            artist: track.artists ? track.artists.map(a => a.name).join(', ') : '',
+            channelId: channelId,
+            thumbnail: track.thumbnails?.[track.thumbnails.length - 1]?.url || '',
+            duration: track.duration || '',
+            durationSeconds: parseDuration(track.duration || '')
+        }));
+    } catch (e) {
+        console.error('[Artist Videos] Error:', e.message);
+        return [];
+    }
 }
 
 // Get playlist details
 async function getPlaylistDetails(playlistId) {
-    const data = await youtubeApiCall('playlists', {
-        part: 'snippet,contentDetails',
-        id: playlistId
-    });
+    try {
+        const playlist = await runMusicApi('get_playlist', playlistId, 10); // limit 0 just for details? No, get_playlist fetches tracks too
+        if (!playlist) return null;
 
-    const playlist = data.items?.[0];
-    if (!playlist) return null;
-
-    return {
-        id: playlist.id,
-        title: playlist.snippet.title,
-        description: playlist.snippet.description,
-        thumbnail: playlist.snippet.thumbnails?.high?.url || playlist.snippet.thumbnails?.medium?.url,
-        channelTitle: playlist.snippet.channelTitle,
-        itemCount: playlist.contentDetails?.itemCount || 0
-    };
+        return {
+            id: playlist.id,
+            title: playlist.title,
+            description: playlist.description || '',
+            thumbnail: playlist.thumbnails?.[playlist.thumbnails.length - 1]?.url || '',
+            channelTitle: playlist.author?.name || '',
+            itemCount: playlist.trackCount || 0
+        };
+    } catch (e) {
+        console.error('[Playlist] Error:', e.message);
+        return null;
+    }
 }
 
 // Get playlist items
 async function getPlaylistItems(playlistId, maxResults = 50) {
-    const data = await youtubeApiCall('playlistItems', {
-        part: 'snippet,contentDetails',
-        playlistId,
-        maxResults
-    });
+    try {
+        const playlist = await runMusicApi('get_playlist', playlistId, maxResults);
+        if (!playlist || !playlist.tracks) return [];
 
-    const videoIds = data.items?.map(item => item.contentDetails?.videoId).filter(Boolean) || [];
-    if (videoIds.length === 0) return [];
-
-    return await getVideoDetails(videoIds);
+        return playlist.tracks.map(track => ({
+            id: track.videoId,
+            title: track.title,
+            artist: track.artists ? track.artists.map(a => a.name).join(', ') : '',
+            channelId: track.artists ? track.artists[0]?.id : '',
+            thumbnail: track.thumbnails?.[track.thumbnails.length - 1]?.url || '',
+            duration: track.duration || '',
+            durationSeconds: track.duration_seconds || parseDuration(track.duration || '')
+        }));
+    } catch (e) {
+        console.error('[Playlist Items] Error:', e.message);
+        return [];
+    }
 }
 
 // ============================================
-// AUDIO EXTRACTION (yt-dlp)
+// AUDIO EXTRACTION (play-dl primary + fallbacks)
 // ============================================
+
+// Piped API instances (fallback - uses NewPipeExtractor)
+const PIPED_INSTANCES = [
+    'https://pipedapi.kavin.rocks',
+    'https://pipedapi.r4fo.com',
+    'https://api.piped.yt'
+];
 
 async function getAudioUrl(videoId) {
     const cached = audioCache.get(videoId);
@@ -494,100 +536,114 @@ async function getAudioUrl(videoId) {
         return cached.data;
     }
 
-    console.log(`[yt-dlp] Extracting audio: ${videoId}`);
+    console.log(`[Audio] Extracting audio for: ${videoId} (racing multiple sources)`);
 
-    return new Promise((resolve, reject) => {
-        const ytdlp = spawn('python', [
-            '-m', 'yt_dlp',
-            '--geo-bypass',
-            '--geo-bypass-country', DEFAULT_REGION,
-            '-f', 'bestaudio[ext=m4a]/bestaudio/best',
-            '--get-url',
-            '-j',
-            '--no-warnings',
-            '--no-playlist',
-            `https://www.youtube.com/watch?v=${videoId}`
-        ]);
+    // Helper to try ytdl-core (fastest - pure Node.js)
+    const tryYtdlCore = async () => {
+        const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        const info = await ytdl.getInfo(videoUrl);
 
-        let stdout = '';
-        let stderr = '';
+        if (info && info.formats && info.formats.length > 0) {
+            const audioFormats = ytdl.filterFormats(info.formats, 'audioonly');
+            audioFormats.sort((a, b) => (b.audioBitrate || 0) - (a.audioBitrate || 0));
+            const bestFormat = audioFormats[0];
 
-        ytdlp.stdout.on('data', (data) => {
-            stdout += data.toString();
-        });
-
-        ytdlp.stderr.on('data', (data) => {
-            stderr += data.toString();
-        });
-
-        const timeout = setTimeout(() => {
-            ytdlp.kill();
-            reject(new Error('yt-dlp timeout'));
-        }, 30000);
-
-        ytdlp.on('close', (code) => {
-            clearTimeout(timeout);
-
-            if (code !== 0) {
-                console.error(`[yt-dlp] Error for ${videoId}:`, stderr);
-                reject(new Error(`yt-dlp exited with code ${code}`));
-                return;
-            }
-
-            try {
-                const lines = stdout.trim().split('\n');
-                let audioUrl = '';
-                let metadata = null;
-
-                for (const line of lines) {
-                    if (line.startsWith('http')) {
-                        audioUrl = line.trim();
-                    } else if (line.startsWith('{')) {
-                        try {
-                            metadata = JSON.parse(line);
-                        } catch (e) { }
-                    }
-                }
-
-                if (!audioUrl) {
-                    reject(new Error('No audio URL found'));
-                    return;
-                }
-
-                const result = {
-                    url: audioUrl,
-                    title: metadata?.title || '',
-                    artist: metadata?.uploader || metadata?.channel || '',
-                    duration: metadata?.duration || 0,
-                    thumbnail: metadata?.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            if (bestFormat && bestFormat.url) {
+                const videoDetails = info.videoDetails;
+                return {
+                    url: bestFormat.url,
+                    title: videoDetails?.title || '',
+                    artist: videoDetails?.author?.name || videoDetails?.ownerChannelName || '',
+                    duration: parseInt(videoDetails?.lengthSeconds) || 0,
+                    thumbnail: videoDetails?.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
                     videoId: videoId,
-                    source: 'yt-dlp',
-                    formats: metadata?.formats?.filter(f => f.acodec !== 'none').map(f => ({
-                        format_id: f.format_id,
-                        ext: f.ext,
-                        abr: f.abr,
-                        asr: f.asr
-                    })) || []
+                    source: 'ytdl-core',
+                    mimeType: bestFormat.mimeType || 'audio/webm',
+                    bitrate: bestFormat.audioBitrate ? bestFormat.audioBitrate * 1000 : 128000
                 };
-
-                audioCache.set(videoId, {
-                    data: result,
-                    timestamp: Date.now()
-                });
-
-                console.log(`[yt-dlp] Success: ${videoId}`);
-                resolve(result);
-            } catch (parseError) {
-                reject(parseError);
             }
-        });
+        }
+        throw new Error('No audio formats found');
+    };
 
-        ytdlp.on('error', (error) => {
-            clearTimeout(timeout);
-            reject(error);
+    // Helper to try yt-dlp (Python - more reliable but slower startup)
+    const tryYtDlp = async () => {
+        const result = await runMusicApi('extract_audio', videoId);
+        if (result && result.url && !result.error) {
+            return {
+                url: result.url,
+                title: result.title || '',
+                artist: result.artist || '',
+                duration: result.duration || 0,
+                thumbnail: result.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+                videoId: videoId,
+                source: 'yt-dlp',
+                mimeType: result.mimeType || 'audio/webm',
+                bitrate: result.bitrate || 128000
+            };
+        }
+        throw new Error(result?.error || 'yt-dlp failed');
+    };
+
+    // Helper to try Piped API (external service)
+    const tryPiped = async (instance) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // Reduced timeout
+
+        const response = await fetch(`${instance}/streams/${videoId}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+            signal: controller.signal
         });
-    });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+
+        const data = await response.json();
+        if (!data.audioStreams || data.audioStreams.length === 0) {
+            throw new Error('No audio streams');
+        }
+
+        const audioStreams = data.audioStreams.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+        const bestAudio = audioStreams[0];
+
+        if (!bestAudio.url) throw new Error('No URL in stream');
+
+        return {
+            url: bestAudio.url,
+            title: data.title || '',
+            artist: data.uploader || data.uploaderName || '',
+            duration: data.duration || 0,
+            thumbnail: data.thumbnailUrl || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            videoId: videoId,
+            source: 'piped',
+            mimeType: bestAudio.mimeType || 'audio/mp4',
+            bitrate: bestAudio.bitrate || 0
+        };
+    };
+
+    // Race all sources in parallel - first successful wins!
+    const sources = [
+        tryYtdlCore().then(r => { console.log(`[Audio] ytdl-core won for ${videoId}`); return r; }).catch(e => { console.log(`[Audio] ytdl-core: ${e.message}`); throw e; }),
+        tryYtDlp().then(r => { console.log(`[Audio] yt-dlp won for ${videoId}`); return r; }).catch(e => { console.log(`[Audio] yt-dlp: ${e.message}`); throw e; }),
+        ...PIPED_INSTANCES.map(inst =>
+            tryPiped(inst).then(r => { console.log(`[Audio] Piped ${inst} won for ${videoId}`); return r; }).catch(e => { console.log(`[Audio] Piped ${inst}: ${e.message}`); throw e; })
+        )
+    ];
+
+    // Promise.any returns the first successful promise
+    try {
+        const result = await Promise.any(sources);
+        audioCache.set(videoId, { data: result, timestamp: Date.now() });
+        console.log(`[Audio] Success from ${result.source}: ${videoId}`);
+        return result;
+    } catch (aggregateError) {
+        // All sources failed
+        console.log(`[Audio] All sources failed for: ${videoId}`);
+        throw new Error('Could not extract audio from any source');
+    }
 }
+
 
 // ============================================
 // SMART AUTOPLAY ALGORITHM
@@ -853,88 +909,54 @@ app.get('/audio/:videoId', async (req, res) => {
     }
 });
 
-// Proxy stream
+// Proxy stream - uses yt-dlp for streaming
 app.get('/stream/:videoId', async (req, res) => {
     const { videoId } = req.params;
+    const { quality = 'high' } = req.query;
+    // Note: Seeking is not supported in proxy streaming mode due to ffmpeg requirements
 
     if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
         return res.status(400).json({ error: 'Invalid video ID' });
     }
 
     try {
-        console.log(`[Stream] Starting stream for: ${videoId}`);
-        const audioInfo = await getAudioUrl(videoId);
+        console.log(`[Stream] Starting stream via yt-dlp for: ${videoId} (Quality: ${quality})`);
 
-        if (!audioInfo?.url) {
-            console.error(`[Stream] No audio URL for: ${videoId}`);
-            return res.status(404).json({ error: 'Audio not available' });
-        }
+        // Map quality to yt-dlp format options
+        let format = 'bestaudio[ext=webm]/bestaudio/best';
 
-        const range = req.headers.range;
-        const headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Referer': 'https://www.youtube.com/',
-            'Origin': 'https://www.youtube.com'
-        };
+        if (quality === 'low') format = 'worstaudio/worst';
+        if (quality === 'normal') format = 'bestaudio[abr<=128]/bestaudio';
 
-        if (range) {
-            headers['Range'] = range;
-        }
+        const args = [
+            '-f', format,
+            '-o', '-',
+            '--no-warnings',
+            '--source-address', '0.0.0.0',
+            '--force-ipv4',
+        ];
 
-        const audioResponse = await fetch(audioInfo.url, { headers });
+        args.push(`https://www.youtube.com/watch?v=${videoId}`);
 
-        if (!audioResponse.ok && audioResponse.status !== 206) {
-            console.error(`[Stream] Upstream error for ${videoId}: ${audioResponse.status}`);
-            return res.status(audioResponse.status).json({ error: 'Upstream error' });
-        }
+        const ytDlpProcess = spawn('python', ['-u', '-m', 'yt_dlp', ...args]);
 
-        // Set response headers
-        res.status(audioResponse.status);
-        res.setHeader('Content-Type', audioResponse.headers.get('content-type') || 'audio/mp4');
-        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Content-Type', 'audio/webm');
         res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Range');
-        res.setHeader('Cache-Control', 'public, max-age=3600');
 
-        const contentLength = audioResponse.headers.get('content-length');
-        if (contentLength) res.setHeader('Content-Length', contentLength);
+        ytDlpProcess.stdout.pipe(res);
 
-        const contentRange = audioResponse.headers.get('content-range');
-        if (contentRange) res.setHeader('Content-Range', contentRange);
-
-        // Handle client disconnect
-        let clientClosed = false;
-        req.on('close', () => {
-            clientClosed = true;
+        ytDlpProcess.stderr.on('data', (data) => {
+            const msg = data.toString();
+            if (msg.toLowerCase().includes('error') && !msg.includes('DeprecationWarning')) {
+                console.log(`[Stream] yt-dlp: ${msg.trim()}`);
+            }
         });
 
-        // Stream the audio data
-        const reader = audioResponse.body.getReader();
+        // Handle client disconnect
+        req.on('close', () => {
+            ytDlpProcess.kill();
+        });
 
-        const pump = async () => {
-            try {
-                while (!clientClosed) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    if (!clientClosed) {
-                        res.write(Buffer.from(value));
-                    }
-                }
-            } catch (e) {
-                if (!clientClosed) {
-                    console.error(`[Stream] Pump error for ${videoId}:`, e.message);
-                }
-            } finally {
-                try { reader.cancel(); } catch (e) { }
-                if (!clientClosed) {
-                    res.end();
-                }
-            }
-        };
-
-        pump();
-        console.log(`[Stream] Started streaming: ${videoId}`);
     } catch (error) {
         console.error(`[Stream] Error for ${videoId}:`, error.message);
         if (!res.headersSent) {
@@ -942,6 +964,9 @@ app.get('/stream/:videoId', async (req, res) => {
         }
     }
 });
+
+
+
 
 // ============ SEARCH ============
 
@@ -953,18 +978,16 @@ app.get('/search', async (req, res) => {
     }
 
     try {
-        // Add to recent searches
+        // Add to recent searches (async, don't wait)
         db.recentSearches = [q, ...db.recentSearches.filter(s => s !== q)].slice(0, 20);
 
+        // searchVideos already returns complete data from ytmusicapi
+        // No need for additional getVideoDetails call (saves ~500-1000ms)
         const results = await searchVideos(q, parseInt(maxResults));
 
-        // Get full details for search results
-        const videoIds = results.map(r => r.id);
-        const detailed = await getVideoDetails(videoIds);
-
         res.json({
-            results: detailed.length > 0 ? detailed : results,
-            source: 'youtube-api'
+            results,
+            source: 'ytmusicapi'
         });
     } catch (error) {
         console.error('[Search] Error:', error.message);
@@ -1098,21 +1121,15 @@ app.get('/artists/search', async (req, res) => {
     const { q, maxResults = 10 } = req.query;
 
     try {
-        const data = await youtubeApiCall('search', {
-            part: 'snippet',
-            type: 'channel',
-            q: q + ' music artist',
-            maxResults
-        });
+        const artists = await searchVideos(q + ' music artist', parseInt(maxResults), 'items'); // searchVideos uses 'channel' for artists filter under the hood if type is channel?
+        // Wait, searchVideos implementation:
+        // if (type === 'channel') filter = 'artists';
+        // So I should pass 'channel'.
 
-        const artists = data.items?.map(item => ({
-            id: item.id.channelId,
-            name: item.snippet.title,
-            thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url,
-            description: item.snippet.description
-        })) || [];
+        // Actually, let's use searchVideos correctly
+        const results = await searchVideos(q, parseInt(maxResults), 'channel');
 
-        res.json({ results: artists });
+        res.json({ results });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -1139,6 +1156,143 @@ app.get('/playlist/:playlistId', async (req, res) => {
     } catch (error) {
         console.error('[Playlist] Error:', error.message);
         res.status(500).json({ error: error.message });
+    }
+});
+
+// ============ ALBUMS ============
+
+// Get album details with tracks
+app.get('/album/:albumId', async (req, res) => {
+    const { albumId } = req.params;
+
+    try {
+        console.log(`[Album] Fetching album: ${albumId}`);
+        const album = await runMusicApi('get_album', albumId);
+
+        if (!album) {
+            return res.status(404).json({ error: 'Album not found' });
+        }
+
+        // Transform album data
+        const albumData = {
+            id: album.audioPlaylistId || albumId,
+            browseId: albumId,
+            title: album.title,
+            artist: album.artists ? album.artists.map(a => a.name).join(', ') : '',
+            artistId: album.artists?.[0]?.id || '',
+            thumbnail: album.thumbnails?.[album.thumbnails.length - 1]?.url || '',
+            year: album.year || '',
+            trackCount: album.trackCount || (album.tracks?.length || 0),
+            duration: album.duration || '',
+            description: album.description || '',
+            type: album.type || 'Album'
+        };
+
+        // Transform tracks
+        const tracks = (album.tracks || []).map((track, index) => ({
+            id: track.videoId,
+            title: track.title,
+            artist: track.artists ? track.artists.map(a => a.name).join(', ') : albumData.artist,
+            artistId: track.artists?.[0]?.id || albumData.artistId,
+            thumbnail: track.thumbnails?.[track.thumbnails.length - 1]?.url || albumData.thumbnail,
+            duration: track.duration || '',
+            durationSeconds: track.duration_seconds || parseDuration(track.duration || ''),
+            trackNumber: index + 1,
+            isExplicit: track.isExplicit || false,
+            album: albumData.title,
+            albumId: albumId
+        }));
+
+        console.log(`[Album] Found album "${albumData.title}" with ${tracks.length} tracks`);
+
+        res.json({
+            album: albumData,
+            tracks
+        });
+    } catch (error) {
+        console.error('[Album] Error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Search for albums
+app.get('/albums/search', async (req, res) => {
+    const { q, maxResults = 20 } = req.query;
+
+    if (!q) {
+        return res.status(400).json({ error: 'Query required' });
+    }
+
+    try {
+        console.log(`[Albums] Searching for: ${q}`);
+        const results = await runMusicApi('search', q, 'albums');
+
+        if (!results || !Array.isArray(results)) {
+            return res.json({ albums: [] });
+        }
+
+        const albums = results.slice(0, parseInt(maxResults)).map(album => ({
+            id: album.browseId,
+            title: album.title,
+            artist: album.artists ? album.artists.map(a => a.name).join(', ') : '',
+            artistId: album.artists?.[0]?.id || '',
+            thumbnail: album.thumbnails?.[album.thumbnails.length - 1]?.url || '',
+            year: album.year || '',
+            type: album.resultType || 'album',
+            isExplicit: album.isExplicit || false
+        })).filter(a => a.id);
+
+        console.log(`[Albums] Found ${albums.length} albums`);
+        res.json({ albums });
+    } catch (error) {
+        console.error('[Albums] Search error:', error.message);
+        res.json({ albums: [], error: error.message });
+    }
+});
+
+// Get new album releases
+app.get('/albums/new', async (req, res) => {
+    const { maxResults = 20 } = req.query;
+
+    try {
+        console.log('[Albums] Fetching new releases');
+
+        // Search for recent album releases
+        const queries = [
+            'new album releases 2024',
+            'latest bollywood albums',
+            'new hindi albums'
+        ];
+
+        const allAlbums = [];
+        const seenIds = new Set();
+
+        for (const query of queries) {
+            const results = await runMusicApi('search', query, 'albums');
+            if (results && Array.isArray(results)) {
+                for (const album of results) {
+                    if (album.browseId && !seenIds.has(album.browseId)) {
+                        seenIds.add(album.browseId);
+                        allAlbums.push({
+                            id: album.browseId,
+                            title: album.title,
+                            artist: album.artists ? album.artists.map(a => a.name).join(', ') : '',
+                            artistId: album.artists?.[0]?.id || '',
+                            thumbnail: album.thumbnails?.[album.thumbnails.length - 1]?.url || '',
+                            year: album.year || '',
+                            type: album.resultType || 'album',
+                            isExplicit: album.isExplicit || false
+                        });
+                    }
+                }
+            }
+        }
+
+        console.log(`[Albums] Found ${allAlbums.length} new releases`);
+        res.json({ albums: allAlbums.slice(0, parseInt(maxResults)) });
+    } catch (error) {
+        console.error('[Albums] New releases error:', error.message);
+        res.json({ albums: [], error: error.message });
     }
 });
 
@@ -1401,11 +1555,30 @@ app.get('/mood/:moodId', async (req, res) => {
 // ============ LYRICS (placeholder - would need external API) ============
 
 app.get('/lyrics/:videoId', async (req, res) => {
-    // Note: Actual lyrics would require an external API like Musixmatch
-    res.json({
-        lyrics: null,
-        message: 'Lyrics not available. Would require external lyrics API integration.'
-    });
+    const { videoId } = req.params;
+
+    try {
+        // Need browseId for lyrics. get_watch_playlist returns it.
+        const watchList = await runMusicApi('get_watch_playlist', videoId);
+
+        if (watchList && watchList.lyrics) {
+            const lyricsData = await runMusicApi('get_lyrics', watchList.lyrics);
+            if (lyricsData && lyricsData.lyrics) {
+                return res.json({
+                    lyrics: lyricsData.lyrics,
+                    source: lyricsData.source || 'MusixMatch via YouTube Music'
+                });
+            }
+        }
+
+        res.json({
+            lyrics: null,
+            message: 'Lyrics not available.'
+        });
+    } catch (e) {
+        console.error('[Lyrics] Error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // ============ CACHE MANAGEMENT ============
@@ -1438,7 +1611,7 @@ app.listen(PORT, () => {
 ╠═══════════════════════════════════════════════════════════════════╣
 ║  Server: http://localhost:${PORT}                                      ║
 ║  Region: ${DEFAULT_REGION} (India)                                              ║
-║  Audio Engine: yt-dlp                                             ║
+║  Audio Engine: yt-dlp (System Python)                             ║
 ║  Database: JSON (${DB_PATH})
 ╠═══════════════════════════════════════════════════════════════════╣
 ║  STREAMING                                                        ║

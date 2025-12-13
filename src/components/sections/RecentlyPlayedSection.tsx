@@ -1,6 +1,7 @@
 import { ChevronRight, History, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayerStore, Song } from '@/store/playerStore';
+import { Link } from 'react-router-dom';
 
 export const RecentlyPlayedSection = () => {
     const { history, playSong } = usePlayerStore();
@@ -18,13 +19,15 @@ export const RecentlyPlayedSection = () => {
                     </div>
                     <h2 className="text-xl sm:text-2xl font-bold">Recently Played</h2>
                 </div>
-                <motion.button
-                    whileHover={{ x: 5 }}
-                    className="flex items-center gap-1 text-xs sm:text-sm text-muted-foreground hover:text-primary transition-colors"
-                >
-                    See all
-                    <ChevronRight className="w-4 h-4" />
-                </motion.button>
+                <Link to="/history">
+                    <motion.button
+                        whileHover={{ x: 5 }}
+                        className="flex items-center gap-1 text-xs sm:text-sm text-muted-foreground hover:text-primary transition-colors"
+                    >
+                        See all
+                        <ChevronRight className="w-4 h-4" />
+                    </motion.button>
+                </Link>
             </div>
 
             <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-2 scrollbar-hide">

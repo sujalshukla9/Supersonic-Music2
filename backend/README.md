@@ -1,60 +1,85 @@
 # Supersonic Music Backend
 
-Audio streaming backend for the Supersonic Music app, powered by yt-dlp and youtubei.js.
+Audio streaming backend for the Supersonic Music app, using yt-dlp and ytmusicapi for reliable audio extraction.
 
-## 🚀 Deployment to Render.com
+## 🚀 Deployment to Railway (Recommended)
 
-### Option 1: Quick Deploy with Blueprint (Recommended)
+### Quick Deploy
 
 1. Push your code to a Git repository (GitHub, GitLab, etc.)
+2. Go to [Railway Dashboard](https://railway.app/)
+3. Click "New Project" → "Deploy from GitHub repo"
+4. Select your repository and the `backend` folder
+5. Railway will auto-detect the Dockerfile and build
+
+### Environment Variables
+
+Set these in Railway Dashboard → Your Service → Variables:
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `PORT` | No | Server port (Railway sets this automatically) | `3001` |
+| `REGION` | No | Default region for content | `IN` |
+| `NODE_ENV` | No | Set to `production` | `production` |
+| `YT_KEY` | No | YouTube API Key (optional) | `AIza...` |
+| `ALLOWED_ORIGINS` | No | CORS origins (comma-separated) | `https://your-app.vercel.app` |
+
+### After Deployment
+
+1. Copy your Railway service URL (e.g., `https://supersonic-backend.up.railway.app`)
+2. Update your frontend `.env` file with:
+   ```
+   VITE_BACKEND_URL=https://your-railway-url.up.railway.app
+   ```
+3. Deploy your frontend to Vercel or Railway
+
+---
+
+## 🎯 Alternative: Deploy to Render.com
+
+### Option 1: Quick Deploy with Blueprint
+
+1. Push your code to Git
 2. Go to [Render Dashboard](https://dashboard.render.com/)
 3. Click "New" → "Blueprint"
-4. Connect your repository
-5. Render will automatically detect `render.yaml` and configure the service
+4. Connect your repository - Render will detect `render.yaml`
 
-### Option 2: Manual Deploy with Docker
+### Option 2: Manual Deploy
 
 1. Go to [Render Dashboard](https://dashboard.render.com/)
 2. Click "New" → "Web Service"
 3. Connect your Git repository
-4. Configure the service:
-   - **Name**: `supersonic-music-backend`
+4. Configure:
+   - **Root Directory**: `backend`
    - **Environment**: `Docker`
-   - **Branch**: `main` (or your default branch)
-   - **Plan**: Free (or your preferred plan)
+   - **Plan**: Free
 
-### Environment Variables
-
-Set these in Render Dashboard → Your Service → Environment:
-
-| Variable | Required | Description | Example |
-|----------|----------|-------------|---------|
-| `PORT` | No | Server port (Render sets this automatically) | `3001` |
-| `REGION` | No | Default region for content | `IN` |
-| `YT_KEY` | No | YouTube Data API key (for some features) | `AIza...` |
-| `NODE_ENV` | No | Set to `production` automatically | `production` |
-| `ALLOWED_ORIGINS` | No | Comma-separated list of allowed origins | `https://your-app.vercel.app` |
-
-### After Deployment
-
-1. Copy your Render service URL (e.g., `https://supersonic-music-backend.onrender.com`)
-2. Update your frontend `.env` file with:`VITE_BACKEND_URL=https://your-render-url.onrender.com`
-3. Deploy your frontend to Vercel
+---
 
 ## 📦 Local Development
 
 ```bash
-# Install dependencies
+# Install Node.js dependencies
 npm install
 
-# Make sure Python and yt-dlp are installed
-python -m pip install yt-dlp
+# Install Python dependencies (required for music_api.py)
+pip install yt-dlp ytmusicapi
 
 # Start the server
 npm start
 
 # Or with auto-reload
 npm run dev
+```
+
+## 🐳 Docker (Local)
+
+```bash
+# Build the image
+docker build -t supersonic-backend .
+
+# Run the container
+docker run -p 3001:3001 supersonic-backend
 ```
 
 ## 🔧 API Endpoints
@@ -83,15 +108,28 @@ npm run dev
 - `POST /favorites/toggle` - Like/unlike
 - `GET /playlists` - User playlists
 
-## ⚠️ Notes for Render Free Tier
+## ⚠️ Platform Notes
 
-- The service may spin down after 15 minutes of inactivity
-- First request after spin-down may take 30-60 seconds
-- Database is ephemeral (resets on restart) - consider adding a proper database for persistence
-- yt-dlp is included in the Docker image
+### Railway
+- Generous free tier with 500 hours/month
+- No sleep on free tier (unlike Render)
+- Fast cold starts
+
+### Render Free Tier
+- Service spins down after 15 minutes of inactivity
+- First request after spin-down takes 30-60 seconds
+- Database is ephemeral
 
 ## 🔒 Security
 
 - Never commit `.env` files
-- Use the `.env.example` as a template
-- Set `ALLOWED_ORIGINS` in production for better security
+- Use `.env.example` as a template
+- Set `ALLOWED_ORIGINS` to your frontend domain in production
+
+## ✨ Features
+
+- **yt-dlp** - Reliable audio extraction with regular updates
+- **ytmusicapi** - Direct YouTube Music API integration
+- **Smart Autoplay** - Intelligent queue generation
+- **Caching** - Audio URLs, metadata, and search results are cached
+- **Health Check** - Built-in `/health` endpoint for monitoring

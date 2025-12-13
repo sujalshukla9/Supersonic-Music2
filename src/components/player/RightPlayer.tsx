@@ -1,8 +1,16 @@
 import { useRef, useEffect, useState } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, ChevronDown, MoreHorizontal, Heart, ListMusic, Radio, Volume2, VolumeX } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, ChevronDown, MoreHorizontal, Heart, ListMusic, Radio, Volume2, VolumeX, Music, Share2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayerStore } from '@/store/playerStore';
 import { useLikesStore } from '@/store/likesStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { Slider } from '@/components/ui/slider';
 
 const formatTime = (seconds: number) => {
@@ -35,6 +43,7 @@ const LikeButton = () => {
 // Queue Item component
 const QueueItem = ({ song, index, isPlaying }: { song: any; index: number; isPlaying: boolean }) => {
   const { playSong, removeFromQueue } = usePlayerStore();
+  const [imageError, setImageError] = useState(false);
 
   return (
     <motion.div
@@ -44,8 +53,17 @@ const QueueItem = ({ song, index, isPlaying }: { song: any; index: number; isPla
       className={`flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer group ${isPlaying ? 'bg-primary/10' : ''}`}
       onClick={() => playSong(song)}
     >
-      <div className="relative w-10 h-10 rounded overflow-hidden flex-shrink-0">
-        <img src={song.thumbnail} alt={song.title} className="w-full h-full object-cover" />
+      <div className="relative w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-secondary flex items-center justify-center">
+        {song.thumbnail && !imageError ? (
+          <img
+            src={song.thumbnail}
+            alt={song.title}
+            className="w-full h-full object-cover"
+            onError={() => setImageError(true)}
+          />
+        ) : (
+          <Music className="w-5 h-5 text-muted-foreground" />
+        )}
         {isPlaying && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
             <div className="flex gap-0.5">
@@ -75,7 +93,6 @@ export const RightPlayer = () => {
     progress,
     shuffle,
     repeat,
-    autoplay,
     queue,
     isRightPanelOpen,
     isLoadingAutoplay,
@@ -89,9 +106,26 @@ export const RightPlayer = () => {
     toggleAutoplay,
     toggleRightPanel,
     setIsPlaying,
+    seekTo,
+    seekTime,
+    resetSeek,
+    isSeeking,
+    setIsSeeking,
+    addToQueue,
+    addToQueueNext,
   } = usePlayerStore();
 
+  const { autoPlay, audioQuality, crossfade, normalizeVolume, dataSaver } = useSettingsStore();
+
+  const [streamOffset, setStreamOffset] = useState(0);
+
+  const navigate = useNavigate();
   const audioRef = useRef<HTMLAudioElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const compressorNodeRef = useRef<DynamicsCompressorNode | null>(null);
+
   const [duration, setDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [audioError, setAudioError] = useState(false);
@@ -99,6 +133,122 @@ export const RightPlayer = () => {
   const [showQueue, setShowQueue] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [prevVolume, setPrevVolume] = useState(80);
+  const [coverImageError, setCoverImageError] = useState(false);
+
+  // Initialize Web Audio API
+  useEffect(() => {
+    if (!audioRef.current || audioContextRef.current) return;
+
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioContext();
+      const source = ctx.createMediaElementSource(audioRef.current);
+      const gain = ctx.createGain();
+      const compressor = ctx.createDynamicsCompressor();
+
+      // Configure Compressor for normalization-like effect
+      compressor.threshold.value = -24;
+      compressor.knee.value = 30;
+      compressor.ratio.value = 12;
+      compressor.attack.value = 0.003;
+      compressor.release.value = 0.25;
+
+      // Connect nodes: Source -> (Compressor?) -> Gain -> Destination
+      source.connect(compressor); // Always connect through compressor chain structure
+      compressor.connect(gain);
+      gain.connect(ctx.destination);
+
+      audioContextRef.current = ctx;
+      sourceNodeRef.current = source;
+      gainNodeRef.current = gain;
+      compressorNodeRef.current = compressor;
+    } catch (e) {
+      console.error('Web Audio API not supported', e);
+    }
+  }, []);
+
+  // Handle Normalization (bypass/enable compressor)
+  useEffect(() => {
+    if (!audioContextRef.current || !sourceNodeRef.current || !gainNodeRef.current || !compressorNodeRef.current) return;
+
+    // Re-routing based on normalization setting
+    // We disconnect and reconnect to toggle the compressor
+    // Simplification: Just effectively "bypass" it?
+    // Actually, dynamic compressor is always on in the chain above. 
+    // Let's adjust threshold to "disable" it if needed or disconnect.
+
+    // Better approach:
+    // If normalized: threshold -24 (active)
+    // If not: threshold 0 (inactive/transparent)
+    if (normalizeVolume) {
+      compressorNodeRef.current.threshold.value = -24;
+      compressorNodeRef.current.ratio.value = 12; // High ratio for limiting
+    } else {
+      compressorNodeRef.current.threshold.value = 0; // Effectively disabled for music
+      compressorNodeRef.current.ratio.value = 1;
+    }
+
+  }, [normalizeVolume]);
+
+  // Volume Control via Gain Node (better quality)
+  useEffect(() => {
+    if (gainNodeRef.current && audioContextRef.current) {
+      const targetVolume = volume / 100;
+      // Smooth transition to prevent clicks (0.1s de-zipper)
+      gainNodeRef.current.gain.setTargetAtTime(targetVolume, audioContextRef.current.currentTime, 0.05);
+    } else if (audioRef.current) {
+      // Fallback
+      audioRef.current.volume = volume / 100;
+    }
+  }, [volume]);
+
+  // Handle Play/Pause with Crossfade (Fade In / Fade Out)
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      // Resume Audio Context if suspended (browser requirement)
+      if (audioContextRef.current?.state === 'suspended') {
+        audioContextRef.current.resume();
+      }
+
+      // FADE IN
+      if (gainNodeRef.current && audioContextRef.current && crossfade > 0) {
+        const ctx = audioContextRef.current;
+        // Start from 0 (or current if fading)
+        gainNodeRef.current.gain.cancelScheduledValues(ctx.currentTime);
+        gainNodeRef.current.gain.setValueAtTime(0, ctx.currentTime);
+        // Ramp to target volume
+        gainNodeRef.current.gain.linearRampToValueAtTime(volume / 100, ctx.currentTime + crossfade);
+      }
+
+      const p = audio.play();
+      if (p !== undefined) {
+        p.catch(e => {
+          console.warn('Playback failed:', e);
+          setIsPlaying(false);
+        });
+      }
+    } else {
+      // FADE OUT logic could go here, but pause is usually immediate.
+      // If we want fade out on pause:
+      /*
+      if (gainNodeRef.current && crossfade > 0) {
+          const ctx = audioContextRef.current;
+          gainNodeRef.current.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.5); // fast fade out
+          setTimeout(() => audio.pause(), 500);
+          return;
+      }
+      */
+      audio.pause();
+    }
+  }, [isPlaying, setIsPlaying, crossfade, volume]); // volume dep ensures we fade to correct level
+
+  // Reset cover error when song changes
+  useEffect(() => {
+    setCoverImageError(false);
+  }, [currentSong?.id]);
 
   const handleRetry = () => {
     setRetryCount(prev => prev + 1);
@@ -114,6 +264,82 @@ export const RightPlayer = () => {
       setVolume(0);
       setIsMuted(true);
     }
+  };
+
+  const handleTimeUpdate = () => {
+    if (audioRef.current && !isSeeking) {
+      setProgress(audioRef.current.currentTime + streamOffset);
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (audioRef.current) {
+      const audioDuration = audioRef.current.duration;
+      // Use audio duration if valid, otherwise fall back to song metadata
+      if (audioDuration && Number.isFinite(audioDuration) && audioDuration > 0) {
+        setDuration(audioDuration);
+      } else if (currentSong?.durationSeconds) {
+        setDuration(currentSong.durationSeconds);
+      }
+    }
+  };
+
+  const handleEnded = () => {
+    if (repeat === 'one' && audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play();
+    } else {
+      nextSong();
+    }
+  };
+
+  const handleSeek = (value: number[]) => {
+    // Update visual progress while dragging
+    setIsSeeking(true);
+    setProgress(value[0]);
+  };
+
+  const handleSeekCommit = (value: number[]) => {
+    const seekValue = value[0];
+    const audio = audioRef.current;
+
+    if (!audio) {
+      setIsSeeking(false);
+      return;
+    }
+
+    // Check if we're using proxy stream (doesn't support seeking)
+    const isProxyStream = audio.src?.includes('/stream/') ?? false;
+
+    if (isProxyStream) {
+      console.log('[Audio] Proxy stream - attempting seek anyway');
+      // Try to seek - it may work depending on how much is buffered
+      try {
+        audio.currentTime = seekValue;
+        setProgress(seekValue);
+      } catch (e) {
+        console.log('[Audio] Seek failed, resetting to current time');
+        setProgress(audio.currentTime);
+      }
+      setIsSeeking(false);
+      return;
+    }
+
+    // Direct URL seeking
+    if (seekValue >= 0 && Number.isFinite(seekValue)) {
+      console.log(`[Audio] Seeking to ${seekValue}s`);
+      try {
+        audio.currentTime = seekValue;
+        setProgress(seekValue);
+      } catch (e) {
+        console.warn('[Audio] Seek error:', e);
+      }
+    }
+    setIsSeeking(false);
+  };
+
+  const handleSeekStart = () => {
+    setIsSeeking(true);
   };
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
@@ -134,6 +360,7 @@ export const RightPlayer = () => {
 
       setIsLoading(true);
       setAudioError(false);
+      setStreamOffset(0);
 
       const tryLoadFromUrl = (url: string): Promise<boolean> => {
         return new Promise((resolve) => {
@@ -145,42 +372,51 @@ export const RightPlayer = () => {
           const audio = audioRef.current;
           let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-          const onCanPlay = () => {
+          const cleanup = () => {
+            audio.removeEventListener('canplay', onCanPlay);
+            audio.removeEventListener('canplaythrough', onCanPlay);
+            audio.removeEventListener('error', onError);
             if (timeoutId) clearTimeout(timeoutId);
+          };
+
+          const onCanPlay = () => {
             cleanup();
             if (!isCancelled) {
+              console.log('[Audio] Can play - stream ready');
               setIsLoading(false);
-              audio.play().catch((err) => {
-                console.log('[Audio] Auto-play blocked:', err.message);
-                setIsPlaying(false);
-              });
+
+              // Auto-play if isPlaying is true (song was clicked to play)
+              if (isPlaying && audio) {
+                console.log('[Audio] Auto-starting playback');
+                audio.play().catch(e => {
+                  console.warn('[Audio] Auto-play failed:', e);
+                });
+              }
             }
             resolve(true);
           };
 
-          const onError = () => {
-            if (timeoutId) clearTimeout(timeoutId);
+          const onError = (e: Event) => {
             cleanup();
+            console.error('[Audio] Load error:', e);
             resolve(false);
           };
 
-          const cleanup = () => {
-            audio.removeEventListener('canplay', onCanPlay);
-            audio.removeEventListener('error', onError);
-          };
-
           audio.addEventListener('canplay', onCanPlay, { once: true });
+          audio.addEventListener('canplaythrough', onCanPlay, { once: true });
           audio.addEventListener('error', onError, { once: true });
 
+          console.log(`[Audio] Setting source: ${url}`);
           audio.src = url;
           audio.load();
 
           timeoutId = setTimeout(() => {
             if (!isCancelled) {
+              console.log('[Audio] Load timeout');
               cleanup();
               resolve(false);
             }
-          }, 15000);
+          }, 25000);
         });
       };
 
@@ -191,41 +427,21 @@ export const RightPlayer = () => {
           if (abortController) abortController.abort();
         }, 45000);
 
-        // First, try the proxy stream (most reliable for CORS)
-        console.log('[Audio] Trying proxy stream first...');
-        const proxyUrl = `${BACKEND_URL}/stream/${currentSong.id}`;
+        // Calculate effective quality (Data Saver override)
+        const effectiveQuality = dataSaver ? 'low' : audioQuality;
+
+        // Use Proxy Stream (seeking not supported, always starts from beginning)
+        console.log('[Audio] Loading via Proxy Stream...');
+        const proxyUrl = `${BACKEND_URL}/stream/${currentSong.id}?quality=${effectiveQuality}`;
+
         const proxySuccess = await tryLoadFromUrl(proxyUrl);
+
         if (proxySuccess) {
-          console.log('[Audio] Proxy stream success');
+          console.log('[Audio] Proxy Stream Success');
           return;
         }
 
-        if (isCancelled) return;
-
-        // If proxy fails, try getting direct URL from backend
-        console.log('[Audio] Proxy failed, trying direct URL...');
-        const response = await fetch(`${BACKEND_URL}/audio/${currentSong.id}`, {
-          signal: abortController.signal
-        });
-
         if (loadTimeoutId) clearTimeout(loadTimeoutId);
-
-        if (isCancelled) return;
-
-        if (response.ok) {
-          const data = await response.json();
-
-          if (data.url) {
-            console.log('[Audio] Got direct URL from backend');
-            const success = await tryLoadFromUrl(data.url);
-            if (success) {
-              console.log('[Audio] Direct URL success');
-              return;
-            }
-          }
-        } else {
-          console.error('[Audio] Backend response not ok:', response.status);
-        }
       } catch (e: any) {
         if (e.name === 'AbortError') {
           console.error('[Audio] Request timed out');
@@ -250,52 +466,38 @@ export const RightPlayer = () => {
         audioRef.current.pause();
       }
     };
-  }, [currentSong?.id, BACKEND_URL, retryCount, setIsPlaying]);
+  }, [currentSong?.id, BACKEND_URL, retryCount, setIsPlaying, audioQuality, dataSaver]);
 
+  // Note: Play/pause is handled by the main isPlaying useEffect above (lines 206-246)
+  // This duplicate was removed to prevent conflicts
+
+  // Handle external seek requests
   useEffect(() => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.play().catch(() => setIsPlaying(false));
-      } else {
-        audioRef.current.pause();
+    if (seekTime !== null && audioRef.current && Number.isFinite(seekTime)) {
+      const audio = audioRef.current;
+
+      console.log(`[Audio] Processing external seek to ${seekTime}s`);
+
+      // Try to seek regardless of stream type
+      try {
+        audio.currentTime = seekTime;
+        setProgress(seekTime);
+        console.log(`[Audio] Seek successful to ${seekTime}s`);
+      } catch (e) {
+        console.warn('[Audio] Seek failed:', e);
+        // Reset to actual position if seek fails
+        setProgress(audio.currentTime);
       }
-    }
-  }, [isPlaying, setIsPlaying]);
 
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = volume / 100;
+      resetSeek();
+      setIsSeeking(false);
     }
-  }, [volume]);
+  }, [seekTime, resetSeek, setIsSeeking]);
 
-  const handleTimeUpdate = () => {
-    if (audioRef.current) {
-      setProgress(audioRef.current.currentTime);
-    }
-  };
+  // Note: Volume is now handled via Web Audio API GainNode (lines 194-203)
+  // This duplicate was removed to prevent audio clicks/conflicts
 
-  const handleLoadedMetadata = () => {
-    if (audioRef.current) {
-      setDuration(audioRef.current.duration);
-      setIsLoading(false);
-    }
-  };
 
-  const handleEnded = () => {
-    if (repeat === 'one' && audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play();
-    } else {
-      nextSong();
-    }
-  };
-
-  const handleSeek = (value: number[]) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = value[0];
-      setProgress(value[0]);
-    }
-  };
 
   const currentIndex = queue.findIndex((s) => s.id === currentSong?.id);
 
@@ -320,18 +522,23 @@ export const RightPlayer = () => {
       <audio
         ref={audioRef}
         preload="auto"
+        crossOrigin="anonymous"
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
-        onPlay={() => setIsPlaying(true)}
+        onPlay={() => {
+          if (!isLoading) setIsPlaying(true);
+        }}
         onPause={() => {
           if (!isLoading) {
             setIsPlaying(false);
           }
         }}
+        onCanPlay={() => setIsLoading(false)}
         onCanPlayThrough={() => setIsLoading(false)}
         onWaiting={() => setIsLoading(true)}
-        onError={() => {
+        onError={(e) => {
+          console.error('[Audio] Audio element error:', e);
           setIsLoading(false);
           setAudioError(true);
         }}
@@ -371,9 +578,24 @@ export const RightPlayer = () => {
                 >
                   <ListMusic className="w-5 h-5" />
                 </button>
-                <button className="p-2 rounded-full hover:bg-white/5 transition-colors text-muted-foreground hover:text-foreground">
-                  <MoreHorizontal className="w-5 h-5 sm:w-6 sm:h-6" />
-                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="p-2 rounded-full hover:bg-white/5 transition-colors text-muted-foreground hover:text-foreground">
+                      <MoreHorizontal className="w-5 h-5 sm:w-6 sm:h-6" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48 bg-background border-border">
+                    <DropdownMenuItem
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/track/${currentSong.id}`);
+                      }}
+                      className="cursor-pointer"
+                    >
+                      <Share2 className="w-4 h-4 mr-2" />
+                      Share
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
 
@@ -397,7 +619,7 @@ export const RightPlayer = () => {
                         )}
                         <button
                           onClick={toggleAutoplay}
-                          className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-colors ${autoplay ? 'bg-primary/20 text-primary' : 'bg-secondary/50 text-muted-foreground'
+                          className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-colors ${autoPlay ? 'bg-primary/20 text-primary' : 'bg-secondary/50 text-muted-foreground'
                             }`}
                         >
                           <Radio className="w-3 h-3" />
@@ -416,7 +638,7 @@ export const RightPlayer = () => {
                       ))}
                       {queue.length <= currentIndex + 1 && (
                         <div className="text-center text-muted-foreground text-sm py-8">
-                          {autoplay ? 'More songs will be added automatically' : 'Queue is empty'}
+                          {autoPlay ? 'More songs will be added automatically' : 'Queue is empty'}
                         </div>
                       )}
                     </div>
@@ -433,14 +655,19 @@ export const RightPlayer = () => {
                     {/* Album Art */}
                     <div className="flex-1 min-h-0 w-full flex items-center justify-center py-2">
                       <motion.div
-                        className="relative w-full h-full max-w-[280px] max-h-[280px] rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center justify-center bg-black/20"
+                        className="relative w-full aspect-square max-w-[280px] rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)] bg-secondary flex items-center justify-center"
                         whileHover={{ scale: 1.02 }}
                       >
-                        <img
-                          src={currentSong.thumbnail}
-                          alt={currentSong.title}
-                          className="max-w-full max-h-full w-auto h-auto object-contain rounded-2xl"
-                        />
+                        {currentSong.thumbnail && !coverImageError ? (
+                          <img
+                            src={currentSong.thumbnail}
+                            alt={currentSong.title}
+                            className="w-full h-full object-cover"
+                            onError={() => setCoverImageError(true)}
+                          />
+                        ) : (
+                          <Music className="w-24 h-24 text-muted-foreground" />
+                        )}
                         {isLoading && (
                           <div className="absolute inset-0 bg-background/50 flex items-center justify-center backdrop-blur-sm">
                             <div className="w-10 h-10 border-2 border-primary/50 border-t-primary rounded-full animate-spin" />
@@ -462,22 +689,75 @@ export const RightPlayer = () => {
                         <h2 className="text-lg sm:text-xl font-bold text-foreground leading-tight line-clamp-1 mb-0.5 tracking-tight">
                           {currentSong.title}
                         </h2>
-                        <p className="text-sm text-muted-foreground font-medium line-clamp-1">
+                        <span
+                          onClick={() => {
+                            if (currentSong.channelId) {
+                              toggleRightPanel();
+                              navigate(`/artist/${currentSong.channelId}`);
+                            }
+                          }}
+                          className="text-sm text-muted-foreground font-medium line-clamp-1 hover:text-primary cursor-pointer transition-colors"
+                        >
                           {currentSong.artist}
-                        </p>
+                        </span>
                       </div>
-                      <button className="p-2 -mr-2 text-muted-foreground hover:text-foreground transition-colors">
-                        <MoreHorizontal className="w-5 h-5" />
-                      </button>
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="p-2 -mr-2 text-muted-foreground hover:text-foreground transition-colors outline-none">
+                            <MoreHorizontal className="w-5 h-5" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48 bg-background border-border">
+                          <DropdownMenuItem
+                            onClick={() => addToQueueNext(currentSong)}
+                            className="cursor-pointer"
+                          >
+                            <ListMusic className="w-4 h-4 mr-2" />
+                            Play Next
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => addToQueue(currentSong)}
+                            className="cursor-pointer"
+                          >
+                            <ListMusic className="w-4 h-4 mr-2" />
+                            Add to Queue
+                          </DropdownMenuItem>
+                          {currentSong.channelId && (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                toggleRightPanel();
+                                navigate(`/artist/${currentSong.channelId}`);
+                              }}
+                              className="cursor-pointer"
+                            >
+                              <Music className="w-4 h-4 mr-2" />
+                              Go to Artist
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            onClick={() => {
+                              navigator.clipboard.writeText(`${window.location.origin}/track/${currentSong.id}`);
+                              // Show toast?
+                            }}
+                            className="cursor-pointer"
+                          >
+                            <Share2 className="w-4 h-4 mr-2" />
+                            Share
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
 
                     {/* Progress Bar */}
                     <div className="flex-shrink-0 w-full mb-3 group">
                       <Slider
                         value={[progress]}
-                        max={duration || currentSong.durationSeconds || 100}
+                        max={duration || currentSong.durationSeconds || 1}
                         step={1}
                         onValueChange={handleSeek}
+                        onValueCommit={handleSeekCommit}
+                        onPointerDown={handleSeekStart}
                         className="cursor-pointer"
                       />
                       <div className="flex justify-between mt-1.5 text-[10px] font-medium text-muted-foreground group-hover:text-foreground transition-colors font-mono">
