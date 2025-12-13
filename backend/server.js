@@ -195,7 +195,7 @@ async function runMusicApi(command, ...args) {
             return `"${String(arg).replace(/"/g, '\\"')}"`;
         }).join(' ');
 
-        const cmd = `python music_api.py ${command} ${escapedArgs}`;
+        const cmd = `python3 music_api.py ${command} ${escapedArgs}`;
         // console.log(`[MusicAPI] Running: ${cmd}`);
 
         const { stdout } = await execAsync(cmd, { cwd: __dirname });
@@ -938,7 +938,7 @@ app.get('/stream/:videoId', async (req, res) => {
 
         args.push(`https://www.youtube.com/watch?v=${videoId}`);
 
-        const ytDlpProcess = spawn('python', ['-u', '-m', 'yt_dlp', ...args]);
+        const ytDlpProcess = spawn('python3', ['-u', '-m', 'yt_dlp', ...args]);
 
         res.setHeader('Content-Type', 'audio/webm');
         res.setHeader('Access-Control-Allow-Origin', '*');

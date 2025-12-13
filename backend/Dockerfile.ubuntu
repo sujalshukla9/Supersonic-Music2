@@ -1,0 +1,53 @@
+# Ubuntu-based Dockerfile for Supersonic Music Backend
+# Use this for deployment on Ubuntu servers
+
+FROM ubuntu:22.04
+
+# Avoid prompts from apt
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Node.js 20.x, Python3, and FFmpeg
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg \
+    python3 \
+    python3-pip \
+    python3-venv \
+    ffmpeg \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a virtual environment for Python dependencies
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install Python dependencies
+RUN pip3 install --no-cache-dir yt-dlp ytmusicapi
+
+# Create app directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install Node.js dependencies (production only)
+RUN npm ci --omit=dev
+
+# Copy application code
+COPY . .
+
+# Create non-root user for security
+RUN useradd -m appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
+EXPOSE 3001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-3001}/health || exit 1
+
+# Start the server
+CMD ["node", "server.js"]

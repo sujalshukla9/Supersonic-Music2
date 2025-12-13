@@ -2,7 +2,7 @@
 FROM node:20-alpine
 
 # Install Python and pip for music_api.py (uses yt-dlp and ytmusicapi)
-RUN apk add --no-cache python3 py3-pip ffmpeg
+RUN apk add --no-cache python3 py3-pip ffmpeg curl
 
 # Create a virtual environment for Python dependencies
 RUN python3 -m venv /opt/venv
@@ -23,12 +23,12 @@ RUN npm ci --omit=dev
 # Copy application code
 COPY . .
 
-# Expose port (Render will set PORT env variable)
+# Expose port (Railway/Render will set PORT env variable)
 EXPOSE 3001
 
-# Health check
+# Health check using curl (more reliable than wget)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT:-3001}/health || exit 1
+    CMD curl -f http://localhost:${PORT:-3001}/health || exit 1
 
 # Start the server
 CMD ["node", "server.js"]
