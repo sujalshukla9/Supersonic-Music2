@@ -1602,6 +1602,29 @@ app.post('/cache/clear', (req, res) => {
     res.json({ success: true, message: 'All caches cleared' });
 });
 
+// ============================================
+// SERVE FRONTEND (PRODUCTION)
+// ============================================
+// Serve static files from the React app
+app.use(express.static(path.join(__dirname, '../dist')));
+
+// The "catchall" handler: for any request that doesn't
+// match one above, send back React's index.html file.
+app.get('*', (req, res) => {
+    // Check if it looks like an API request that wasn't handled
+    if (req.path.startsWith('/api/') || req.path.startsWith('/stream/')) {
+        return res.status(404).json({ error: 'Not Found' });
+    }
+
+    // Don't error if index.html is missing (dev mode), just 404
+    const indexPath = path.join(__dirname, '../dist/index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send('Frontend not built. Please run npm run build.');
+    }
+});
+
 // ============ START SERVER ============
 
 app.listen(PORT, () => {
