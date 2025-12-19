@@ -1,0 +1,23 @@
+# Nixpacks configuration for Railway deployment
+# Forces Node.js with npm (not bun)
+
+providers = ["node"]
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "python311", "python311Packages.pip", "ffmpeg"]
+
+[phases.install]
+cmds = [
+    "npm install --legacy-peer-deps",
+    "pip install --no-cache-dir yt-dlp ytmusicapi"
+]
+
+[phases.build]
+cmds = ["echo 'No build needed'"]
+
+[start]
+cmd = "node server.js"
+
+[variables]
+NODE_ENV = "production"
+PYTHONUNBUFFERED = "1"

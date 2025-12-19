@@ -1,0 +1,19 @@
+{
+    "name": "supersonic-backend",
+    "version": "2.0.0",
+    "description": "Supersonic Music Backend - ViTune Style API (No streaming, URL extraction only)",
+    "main": "server.js",
+    "type": "module",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "node --watch server.js",
+        "build": "echo 'No build step needed'"
+    },
+    "dependencies": {
+        "cors": "^2.8.5",
+        "express": "^4.18.2"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    }
+}
