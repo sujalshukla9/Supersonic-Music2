@@ -65,39 +65,44 @@
 
   /* Light theme */
   .light {
-    --background: 0 0% 100%;
+    --background: 0 0% 98%;
     --foreground: 222 47% 11%;
 
-    --card: 0 0% 98%;
+    --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
 
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --secondary: 214 32% 91%;
+    --secondary: 220 14% 96%;
     --secondary-foreground: 222 47% 11%;
 
-    --muted: 214 32% 91%;
+    --muted: 220 14% 92%;
     --muted-foreground: 215 16% 47%;
 
-    --border: 214 32% 85%;
-    --input: 214 32% 85%;
+    --border: 220 13% 85%;
+    --input: 220 13% 85%;
 
-    --glass: 0 0% 96%;
-    --glass-border: 214 32% 85%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --glass: 0 0% 100%;
+    --glass-border: 220 13% 80%;
 
     /* Light theme gradients */
-    --gradient-dark: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(0 0% 98%) 100%);
-    --gradient-card: linear-gradient(135deg, hsl(0 0% 98%) 0%, hsl(214 32% 96%) 100%);
-    --gradient-hero: linear-gradient(135deg, hsl(var(--primary) / 0.1) 0%, hsl(var(--accent) / 0.05) 50%, hsl(0 0% 100%) 100%);
+    --gradient-dark: linear-gradient(180deg, hsl(0 0% 98%) 0%, hsl(220 14% 96%) 100%);
+    --gradient-card: linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(220 14% 98%) 100%);
+    --gradient-hero: linear-gradient(135deg, hsl(var(--primary) / 0.08) 0%, hsl(var(--accent) / 0.05) 50%, hsl(0 0% 98%) 100%);
 
     /* Light theme shadows */
-    --shadow-card: 0 8px 32px hsl(0 0% 0% / 0.1);
+    --shadow-glow: 0 0 40px hsl(262 83% 58% / 0.15);
+    --shadow-card: 0 4px 20px hsl(220 20% 20% / 0.08);
+    --shadow-player: 0 -10px 40px hsl(262 83% 58% / 0.1);
 
-    --sidebar-background: 0 0% 98%;
+    --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 222 47% 11%;
-    --sidebar-border: 214 32% 85%;
-    --sidebar-accent: 214 32% 91%;
+    --sidebar-border: 220 13% 88%;
+    --sidebar-accent: 220 14% 96%;
     --sidebar-accent-foreground: 222 47% 11%;
   }
 }

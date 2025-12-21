@@ -31,6 +31,8 @@ interface PlayerState {
     isRightPanelOpen: boolean;
     isFullPlayer: boolean;
     isLoadingAutoplay: boolean;
+    showQueueInFullPlayer: boolean;
+    isBuffering: boolean;
 
     // Seeking state
     isSeeking: boolean;
@@ -68,6 +70,9 @@ interface PlayerState {
     toggleSidebar: () => void;
     toggleRightPanel: () => void;
     toggleFullPlayer: () => void;
+    openFullPlayerWithQueue: () => void;
+    setShowQueueInFullPlayer: (show: boolean) => void;
+    setIsBuffering: (buffering: boolean) => void;
 
     // Actions - History
     addToHistory: (song: Song) => void;
@@ -101,6 +106,8 @@ export const usePlayerStore = create<PlayerState>()(
             isRightPanelOpen: false,
             isFullPlayer: false,
             isLoadingAutoplay: false,
+            showQueueInFullPlayer: false,
+            isBuffering: false,
             isSeeking: false,
             seekTime: null,
 
@@ -390,7 +397,10 @@ export const usePlayerStore = create<PlayerState>()(
             // UI toggles
             toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
             toggleRightPanel: () => set((state) => ({ isRightPanelOpen: !state.isRightPanelOpen })),
-            toggleFullPlayer: () => set((state) => ({ isFullPlayer: !state.isFullPlayer })),
+            toggleFullPlayer: () => set((state) => ({ isFullPlayer: !state.isFullPlayer, showQueueInFullPlayer: false })),
+            openFullPlayerWithQueue: () => set({ isFullPlayer: true, showQueueInFullPlayer: true }),
+            setShowQueueInFullPlayer: (show) => set({ showQueueInFullPlayer: show }),
+            setIsBuffering: (buffering) => set({ isBuffering: buffering }),
 
             // History management
             addToHistory: (song) => {

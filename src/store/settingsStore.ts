@@ -128,19 +128,35 @@ const applyAccentColors = (colorId: string) => {
 
     // Set primary and accent CSS variables
     root.style.setProperty('--primary', config.primary);
+    root.style.setProperty('--primary-foreground', '0 0% 100%'); // Always white for contrast
     root.style.setProperty('--accent', config.accent);
+    root.style.setProperty('--accent-foreground', '0 0% 100%');
     root.style.setProperty('--ring', config.ring);
     root.style.setProperty('--purple-glow', config.glowColor);
     root.style.setProperty('--pink-glow', config.accent);
 
     // Update sidebar primary colors
     root.style.setProperty('--sidebar-primary', config.primary);
+    root.style.setProperty('--sidebar-primary-foreground', '0 0% 100%');
     root.style.setProperty('--sidebar-ring', config.ring);
 
     // Update gradient CSS variables
     root.style.setProperty('--gradient-primary',
         `linear-gradient(135deg, hsl(${config.gradientFrom}) 0%, hsl(${config.gradientTo}) 100%)`
     );
+
+    // Update hero gradient for dark mode (uses primary color)
+    const isDark = root.classList.contains('dark') || (!root.classList.contains('light') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+    if (isDark) {
+        root.style.setProperty('--gradient-hero',
+            `linear-gradient(135deg, hsl(${config.gradientFrom} / 0.25) 0%, hsl(${config.gradientTo} / 0.15) 50%, hsl(220 30% 8%) 100%)`
+        );
+    } else {
+        root.style.setProperty('--gradient-hero',
+            `linear-gradient(135deg, hsl(${config.gradientFrom} / 0.08) 0%, hsl(${config.gradientTo} / 0.05) 50%, hsl(0 0% 98%) 100%)`
+        );
+    }
 
     // Update shadow glow
     root.style.setProperty('--shadow-glow',
@@ -158,6 +174,8 @@ const applyAccentColors = (colorId: string) => {
 
     // Generate and apply dynamic favicon
     generateDynamicFavicon(config.primary, config.gradientTo);
+
+    console.log(`[Settings] Applied accent color: ${colorId}`);
 };
 
 // Generate a dynamic favicon with the accent color
@@ -313,11 +331,16 @@ export const useSettingsStore = create<SettingsState>()(
                         root.classList.remove('light', 'dark');
                         root.classList.add(isDark ? 'dark' : 'light');
                         applyThemeColors(isDark);
+                        // Reapply accent colors to update theme-dependent gradients
+                        applyAccentColors(get().accentColor);
                     });
                 } else {
                     root.classList.add(theme);
                     applyThemeColors(theme === 'dark');
                 }
+
+                // Reapply accent colors to update gradient-hero and other theme-dependent styles
+                applyAccentColors(get().accentColor);
 
                 set({ theme });
                 syncToBackend({ theme });

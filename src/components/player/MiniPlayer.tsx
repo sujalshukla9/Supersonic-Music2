@@ -11,13 +11,14 @@ export const MiniPlayer = () => {
     isPlaying,
     volume,
     progress,
+    isBuffering,
     togglePlay,
     nextSong,
     previousSong,
     setVolume,
     toggleFullPlayer,
     isRightPanelOpen,
-    toggleRightPanel,
+    openFullPlayerWithQueue,
   } = usePlayerStore();
 
   const { downloadSong, isDownloaded, getDownloadProgress } = useDownloadsStore();
@@ -30,7 +31,7 @@ export const MiniPlayer = () => {
 
   if (!currentSong) return null;
 
-  const progressPercent = (progress / (currentSong.durationSeconds || 100)) * 100;
+  const progressPercent = (progress / (currentSong.durationSeconds || 1)) * 100;
   const songIsDownloaded = isDownloaded(currentSong.id);
   const downloadProgress = getDownloadProgress(currentSong.id);
 
@@ -48,10 +49,10 @@ export const MiniPlayer = () => {
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 100, opacity: 0 }}
         // Responsive floating capsule style
-        className={`fixed bottom-2 sm:bottom-4 left-2 right-2 sm:left-4 sm:right-4 lg:left-[calc(16rem+1rem)] h-16 sm:h-20 bg-black/70 backdrop-blur-2xl border border-white/10 shadow-2xl rounded-xl sm:rounded-2xl z-50 overflow-hidden ${isRightPanelOpen ? 'hidden' : ''}`}
+        className={`fixed bottom-2 sm:bottom-4 left-2 right-2 sm:left-4 sm:right-4 lg:left-[calc(16rem+1rem)] h-16 sm:h-20 bg-card/95 dark:bg-card/80 backdrop-blur-2xl border border-border shadow-2xl rounded-xl sm:rounded-2xl z-50 overflow-hidden ${isRightPanelOpen ? 'hidden' : ''}`}
       >
         {/* Progress Bar (Thin line at bottom) */}
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 sm:h-1 bg-white/5 cursor-pointer group">
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 sm:h-1 bg-muted cursor-pointer group">
           <motion.div
             className="h-full bg-primary/80 group-hover:bg-primary transition-colors"
             style={{ width: `${progressPercent}%` }}
@@ -91,10 +92,10 @@ export const MiniPlayer = () => {
             <motion.button
               onClick={handleDownload}
               className={`p-1.5 sm:p-2 rounded-full transition-colors ${songIsDownloaded
-                  ? 'text-green-500'
-                  : downloadProgress
-                    ? 'text-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-white/10'
+                ? 'text-green-500'
+                : downloadProgress
+                  ? 'text-primary'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
                 }`}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.95 }}
@@ -111,21 +112,27 @@ export const MiniPlayer = () => {
 
             <button
               onClick={previousSong}
-              className="hidden sm:block p-1.5 sm:p-2 rounded-full hover:bg-white/10 text-foreground transition-colors"
+              className="hidden sm:block p-1.5 sm:p-2 rounded-full hover:bg-secondary text-foreground transition-colors"
             >
               <SkipBack className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
             </button>
             <motion.button
               onClick={togglePlay}
-              className="p-2 sm:p-3 rounded-full bg-foreground text-background shadow-lg shadow-white/10"
+              className="p-2 sm:p-3 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/20"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              {isPlaying ? <Pause className="w-4 h-4 sm:w-5 sm:h-5 fill-current" /> : <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current ml-0.5" />}
+              {isBuffering ? (
+                <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
+              ) : isPlaying ? (
+                <Pause className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
+              ) : (
+                <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current ml-0.5" />
+              )}
             </motion.button>
             <button
               onClick={nextSong}
-              className="p-1.5 sm:p-2 rounded-full hover:bg-white/10 text-foreground transition-colors"
+              className="p-1.5 sm:p-2 rounded-full hover:bg-secondary text-foreground transition-colors"
             >
               <SkipForward className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
             </button>
@@ -144,18 +151,18 @@ export const MiniPlayer = () => {
               />
             </div>
 
-            <div className="h-8 w-px bg-white/10 mx-2" />
+            <div className="h-8 w-px bg-border mx-2" />
 
             <motion.button
-              onClick={toggleRightPanel}
-              className={`p-2 rounded-full transition-colors ${isRightPanelOpen ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-white/5'}`}
+              onClick={openFullPlayerWithQueue}
+              className="p-2 rounded-full transition-colors text-muted-foreground hover:text-foreground hover:bg-secondary/50"
               whileHover={{ scale: 1.1 }}
             >
               <ListMusic className="w-5 h-5" />
             </motion.button>
             <motion.button
               onClick={toggleFullPlayer}
-              className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+              className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
               whileHover={{ scale: 1.1 }}
             >
               <ChevronUp className="w-5 h-5" />

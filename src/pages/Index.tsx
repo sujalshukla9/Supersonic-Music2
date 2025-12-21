@@ -18,9 +18,9 @@ const Index = () => {
       <div className="space-y-4 sm:space-y-8">
         <HeroBanner />
         <RecentlyPlayedSection />
+        <RecommendationsSection />
         <ForYouSection />
         <TrendingSection />
-        <RecommendationsSection />
         <PlaylistSection />
         <ArtistsSection />
       </div>

@@ -133,7 +133,7 @@ export const Header = () => {
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                       >
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden bg-secondary ring-1 ring-white/10 group-hover:ring-primary/50 transition-all mb-1.5">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden bg-secondary ring-1 ring-border group-hover:ring-primary/50 transition-all mb-1.5">
                           {artist.thumbnail ? (
                             <img
                               src={artist.thumbnail}

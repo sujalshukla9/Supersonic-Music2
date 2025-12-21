@@ -7,7 +7,8 @@ import { Helmet } from 'react-helmet-async';
 import { useEffect, useState } from 'react';
 import { searchArtists, getArtistDetails, durationToSeconds } from '@/lib/youtube';
 import { Artist } from '@/data/mockData';
-import { Song, usePlayerStore } from '@/store/playerStore';
+import { usePlayerStore } from '@/store/playerStore';
+import { Song } from '@/types';
 import { useNavigate } from 'react-router-dom';
 
 const Artists = () => {

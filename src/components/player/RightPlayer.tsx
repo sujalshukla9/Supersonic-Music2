@@ -54,7 +54,7 @@ const QueueItem = ({ song, index, isPlaying }: { song: Song; index: number; isPl
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.03 }}
-      className={`flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer group ${isPlaying ? 'bg-primary/10' : ''}`}
+      className={`flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/50 transition-colors cursor-pointer group ${isPlaying ? 'bg-primary/10' : ''}`}
       onClick={() => playSong(song)}
     >
       <div className="relative w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-secondary flex items-center justify-center">
@@ -69,7 +69,7 @@ const QueueItem = ({ song, index, isPlaying }: { song: Song; index: number; isPl
           <Music className="w-5 h-5 text-muted-foreground" />
         )}
         {isPlaying && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-background/60 dark:bg-black/50 flex items-center justify-center">
             <div className="flex gap-0.5">
               <span className="w-0.5 h-3 bg-primary animate-pulse" style={{ animationDelay: '0ms' }} />
               <span className="w-0.5 h-3 bg-primary animate-pulse" style={{ animationDelay: '150ms' }} />
@@ -100,6 +100,7 @@ export const RightPlayer = () => {
     queue,
     isRightPanelOpen,
     isLoadingAutoplay,
+    isBuffering,
     togglePlay,
     nextSong,
     previousSong,
@@ -110,6 +111,7 @@ export const RightPlayer = () => {
     toggleAutoplay,
     toggleRightPanel,
     setIsPlaying,
+    setIsBuffering,
     seekTo,
     seekTime,
     resetSeek,
@@ -135,7 +137,6 @@ export const RightPlayer = () => {
   const bassBoostNodeRef = useRef<BiquadFilterNode | null>(null);
 
   const [duration, setDuration] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
   const [audioError, setAudioError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [showQueue, setShowQueue] = useState(false);
@@ -532,15 +533,16 @@ export const RightPlayer = () => {
     const loadAudio = async () => {
       if (!currentSong) return;
 
+      // Set loading state BEFORE pausing to prevent onPause from resetting isPlaying
+      setIsBuffering(true);
+      setAudioError(false);
+      setStreamOffset(0);
+
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.removeAttribute('src');
         audioRef.current.load();
       }
-
-      setIsLoading(true);
-      setAudioError(false);
-      setStreamOffset(0);
 
       const tryLoadFromUrl = (url: string): Promise<boolean> => {
         return new Promise((resolve) => {
@@ -566,10 +568,12 @@ export const RightPlayer = () => {
             cleanup();
             if (!isCancelled) {
               console.log('[Audio] Can play - stream ready');
-              setIsLoading(false);
+              setIsBuffering(false);
 
-              // Auto-play if isPlaying is true (song was clicked to play)
-              if (isPlaying && audio) {
+              // Auto-play: Read current state from store (not stale closure value)
+              // This is critical for autoplay when nextSong() sets isPlaying: true
+              const currentIsPlaying = usePlayerStore.getState().isPlaying;
+              if (currentIsPlaying && audio) {
                 console.log('[Audio] Auto-starting playback');
                 audio.play().catch(e => {
                   console.warn('[Audio] Auto-play failed:', e);
@@ -625,7 +629,7 @@ export const RightPlayer = () => {
             if (loaded) {
               console.log('[Audio] ✅ Playing from downloaded storage');
               setAudioMetadata({ format: 'OFFLINE', bitrate: 320, hz: 48000 });
-              setIsLoading(false);
+              setIsBuffering(false);
               return;
             }
             // If offline load fails, fall through to network
@@ -678,7 +682,7 @@ export const RightPlayer = () => {
         const error = e as Error & { name?: string };
         if (error.name !== 'AbortError' && !isCancelled) {
           console.error('[Audio] Error:', error.message);
-          setIsLoading(false);
+          setIsBuffering(false);
           setAudioError(true);
         }
       }
@@ -737,9 +741,9 @@ export const RightPlayer = () => {
     if (!isRightPanelOpen) return null;
 
     return (
-      <aside className="hidden xl:flex fixed right-0 top-0 h-screen w-[380px] bg-background/50 backdrop-blur-3xl border-l border-white/5 flex-col items-center justify-center z-30">
+      <aside className="hidden xl:flex fixed right-0 top-0 h-screen w-[380px] bg-background/50 backdrop-blur-3xl border-l border-border flex-col items-center justify-center z-30">
         <div className="text-center p-8 space-y-4">
-          <div className="w-24 h-24 rounded-full bg-secondary/30 flex items-center justify-center mx-auto ring-1 ring-white/10">
+          <div className="w-24 h-24 rounded-full bg-secondary/30 flex items-center justify-center mx-auto ring-1 ring-border">
             <ListMusic className="w-10 h-10 text-muted-foreground" />
           </div>
           <div>
@@ -761,19 +765,19 @@ export const RightPlayer = () => {
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={handleEnded}
         onPlay={() => {
-          if (!isLoading) setIsPlaying(true);
+          if (!isBuffering) setIsPlaying(true);
         }}
         onPause={() => {
-          if (!isLoading) {
+          if (!isBuffering) {
             setIsPlaying(false);
           }
         }}
-        onCanPlay={() => setIsLoading(false)}
-        onCanPlayThrough={() => setIsLoading(false)}
-        onWaiting={() => setIsLoading(true)}
+        onCanPlay={() => setIsBuffering(false)}
+        onCanPlayThrough={() => setIsBuffering(false)}
+        onWaiting={() => setIsBuffering(true)}
         onError={(e) => {
           console.error('[Audio] Audio element error:', e);
-          setIsLoading(false);
+          setIsBuffering(false);
           setAudioError(true);
         }}
       />
@@ -797,10 +801,10 @@ export const RightPlayer = () => {
             </div>
 
             {/* Header - Fixed at top */}
-            <div className="flex-shrink-0 flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 z-10 border-b border-white/5">
+            <div className="flex-shrink-0 flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 z-10 border-b border-border">
               <button
                 onClick={toggleRightPanel}
-                className="p-2 -ml-2 rounded-full hover:bg-white/5 transition-colors text-muted-foreground hover:text-foreground"
+                className="p-2 -ml-2 rounded-full hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-foreground"
               >
                 <ChevronDown className="w-5 h-5" />
               </button>
@@ -812,13 +816,13 @@ export const RightPlayer = () => {
               <div className="flex gap-1">
                 <button
                   onClick={() => setShowQueue(!showQueue)}
-                  className={`p-2 rounded-full transition-colors ${showQueue ? 'bg-primary/20 text-primary' : 'hover:bg-white/5 text-muted-foreground hover:text-foreground'}`}
+                  className={`p-2 rounded-full transition-colors ${showQueue ? 'bg-primary/20 text-primary' : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'}`}
                 >
                   <ListMusic className="w-5 h-5" />
                 </button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="p-2 rounded-full hover:bg-white/5 transition-colors text-muted-foreground hover:text-foreground">
+                    <button className="p-2 rounded-full hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-foreground">
                       <MoreHorizontal className="w-5 h-5" />
                     </button>
                   </DropdownMenuTrigger>
@@ -906,7 +910,7 @@ export const RightPlayer = () => {
                         ) : (
                           <Music className="w-24 h-24 text-muted-foreground" />
                         )}
-                        {isLoading && (
+                        {isBuffering && (
                           <div className="absolute inset-0 bg-background/50 flex items-center justify-center backdrop-blur-sm">
                             <div className="w-10 h-10 border-2 border-primary/50 border-t-primary rounded-full animate-spin" />
                           </div>

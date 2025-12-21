@@ -1,4 +1,4 @@
-import { Song } from '@/store/playerStore';
+import { Song } from '@/types';
 
 export interface Playlist {
   id: string;

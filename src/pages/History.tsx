@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Helmet } from 'react-helmet-async';
 import { Clock, Play, Trash2, Music, MoreHorizontal } from 'lucide-react';
-import { usePlayerStore, Song } from '@/store/playerStore';
+import { usePlayerStore } from '@/store/playerStore';
+import { Song } from '@/types';
 import {
     DropdownMenu,
     DropdownMenuContent,

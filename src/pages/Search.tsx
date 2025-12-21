@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search as SearchIcon, Loader2, User, Play, Music, Mic2 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import { useEffect, useState } from 'react';
-import { Song, usePlayerStore } from '@/store/playerStore';
+import { usePlayerStore } from '@/store/playerStore';
+import { Song } from '@/types';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
 interface Artist {
@@ -114,7 +115,7 @@ const Search = () => {
       className="flex flex-col items-center p-3 sm:p-4 rounded-xl bg-secondary/30 hover:bg-secondary/50 cursor-pointer transition-colors group"
     >
       <div className="relative mb-3">
-        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden bg-secondary ring-2 ring-white/10 group-hover:ring-primary/50 transition-all">
+        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden bg-secondary ring-2 ring-border group-hover:ring-primary/50 transition-all">
           {artist.thumbnail ? (
             <img
               src={artist.thumbnail}
@@ -172,14 +173,14 @@ const Search = () => {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-2 border-b border-white/10 pb-1">
+          <div className="flex gap-2 border-b border-border pb-1">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors relative ${activeTab === tab.id
-                    ? 'text-primary'
-                    : 'text-muted-foreground hover:text-foreground'
+                  ? 'text-primary'
+                  : 'text-muted-foreground hover:text-foreground'
                   }`}
               >
                 {tab.label}

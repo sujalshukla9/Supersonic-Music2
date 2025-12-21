@@ -1,7 +1,8 @@
 import { ChevronRight, TrendingUp, Loader2, RefreshCw, Play, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SongCard } from '@/components/cards/SongCard';
-import { usePlayerStore, Song } from '@/store/playerStore';
+import { usePlayerStore } from '@/store/playerStore';
+import { Song } from '@/types';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { trendingSongs as mockSongs } from '@/data/mockData';
 import { Link } from 'react-router-dom';
@@ -16,10 +17,12 @@ interface VideoResponse {
   thumbnail: string;
   duration?: string;
   durationSeconds?: number;
+  rank?: number;
+  views?: string;
 }
 
 export const TrendingSection = () => {
-  const { setQueue, playSong, queue } = usePlayerStore();
+  const { setQueue, playSong } = usePlayerStore();
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -32,7 +35,7 @@ export const TrendingSection = () => {
     setError(null);
 
     try {
-      // If force refresh, call the refresh endpoint first
+      // Force refresh clears backend cache
       if (forceRefresh) {
         console.log('[Trending] Force refreshing cache...');
         try {
@@ -43,11 +46,13 @@ export const TrendingSection = () => {
       }
 
       // Fetch trending from backend (uses ytmusicapi)
+      console.log('[Trending] Fetching from YouTube Music...');
       const response = await fetch(`${BACKEND_URL}/trending?maxResults=15`);
+
       if (response.ok) {
         const data = await response.json();
         if (data.results && data.results.length > 0) {
-          console.log('[Trending] Fetched from backend:', data.results.length, 'songs');
+          console.log('[Trending] Fetched:', data.results.length, 'songs from', data.source);
           const formattedSongs: Song[] = data.results.map((video: VideoResponse) => ({
             id: video.id,
             title: video.title,
@@ -60,14 +65,11 @@ export const TrendingSection = () => {
           }));
           setSongs(formattedSongs);
 
-          // Use lastUpdated from backend if available
           if (data.lastUpdated) {
             setLastUpdated(new Date(data.lastUpdated));
           } else {
             setLastUpdated(new Date());
           }
-          setIsLoading(false);
-          setIsRefreshing(false);
           return;
         }
       }
@@ -84,24 +86,22 @@ export const TrendingSection = () => {
       } else {
         setError('Unable to load trending songs');
       }
-
+    } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    // Only fetch once on mount
     if (!hasFetchedRef.current) {
       hasFetchedRef.current = true;
-      fetchTrending().finally(() => setIsLoading(false));
+      fetchTrending();
     }
   }, [fetchTrending]);
 
   const handleRefresh = () => {
-    // Force refresh clears backend cache
     setIsRefreshing(true);
-    fetchTrending(true, true).finally(() => setIsRefreshing(false));
+    fetchTrending(true, true);
   };
 
   const handlePlayAll = () => {
@@ -179,7 +179,10 @@ export const TrendingSection = () => {
         </div>
       </div>
 
-      <div className="glass-card p-3 sm:p-4 relative">
+      <div className="glass-card p-3 sm:p-4 relative overflow-hidden">
+        {/* Subtle gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent pointer-events-none" />
+
         <AnimatePresence mode="wait">
           {isLoading ? (
             <motion.div
@@ -205,7 +208,7 @@ export const TrendingSection = () => {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={handleRefresh}
-                className="px-4 py-2 text-sm bg-primary/20 text-primary rounded-full"
+                className="px-4 py-2 text-sm bg-red-500/20 text-red-500 rounded-full"
               >
                 Try Again
               </motion.button>
@@ -215,7 +218,7 @@ export const TrendingSection = () => {
               key="songs"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="space-y-1"
+              className="space-y-1 relative z-10"
             >
               {songs.slice(0, 10).map((song, index) => (
                 <motion.div
@@ -233,8 +236,8 @@ export const TrendingSection = () => {
 
         {/* Refreshing overlay */}
         {isRefreshing && !isLoading && (
-          <div className="absolute inset-0 bg-background/50 backdrop-blur-sm rounded-xl flex items-center justify-center">
-            <div className="flex items-center gap-2 text-primary">
+          <div className="absolute inset-0 bg-background/50 backdrop-blur-sm rounded-xl flex items-center justify-center z-20">
+            <div className="flex items-center gap-2 text-red-500">
               <Loader2 className="w-5 h-5 animate-spin" />
               <span className="text-sm font-medium">Updating trending...</span>
             </div>

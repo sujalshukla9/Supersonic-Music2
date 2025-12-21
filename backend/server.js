@@ -73,7 +73,7 @@ const audioQualityCache = new Map();  // Audio quality metadata cache (24 hours)
 
 const METADATA_CACHE_DURATION = 60 * 60 * 1000;        // 1 hour
 const SEARCH_CACHE_DURATION = 15 * 60 * 1000;          // 15 minutes
-const TRENDING_CACHE_DURATION = 24 * 60 * 60 * 1000;   // 24 hours (1 day)
+const TRENDING_CACHE_DURATION = 60 * 60 * 1000;           // 1 hour (fresher trending)
 const EXTRACT_CACHE_DURATION = 4 * 60 * 60 * 1000;     // 4 hours
 const QUALITY_CACHE_DURATION = 24 * 60 * 60 * 1000;     // 24 hours
 
@@ -506,91 +506,238 @@ async function getVideoDetails(videoIds) {
     return uniqueIds.map(id => metadataCache.get(id)?.data).filter(Boolean);
 }
 
-async function getTrendingMusic(maxResults = 25) {
-    if (trendingCache.data && Date.now() - trendingCache.timestamp < TRENDING_CACHE_DURATION) {
+async function getTrendingMusic(maxResults = 25, forceRefresh = false) {
+    // Check cache (but allow force refresh)
+    if (!forceRefresh && trendingCache.data && Date.now() - trendingCache.timestamp < TRENDING_CACHE_DURATION) {
         console.log('[Trending] Returning cached data');
         return trendingCache.data;
     }
 
-    console.log('[Trending] Fetching trending music...');
+    console.log('[Trending] Fetching fresh trending music...');
 
-    // Try ytmusicapi first (better music-specific results)
+    let allTracks = [];
+    let sources = [];
+
+    // Strategy 1: Try ytmusicapi charts (best for India trending)
     try {
-        const trendingData = await runMusicApi('get_trending', maxResults);
+        const chartsData = await runMusicApi('get_charts', 'IN');
 
-        if (trendingData && !trendingData.error && trendingData.trending && trendingData.trending.length > 0) {
-            const tracks = trendingData.trending;
+        if (chartsData && !chartsData.error) {
+            // Get from videos/trending section
+            const chartItems = chartsData.videos?.items || chartsData.trending?.items || [];
 
-            const results = tracks.slice(0, maxResults).map((item, index) => {
-                let duration = item.duration || '3:30';
-                let durationSeconds = item.duration_seconds || parseDuration(duration);
+            if (chartItems.length > 0) {
+                const chartTracks = chartItems.slice(0, 15).map((item, index) => {
+                    let thumbnail = '';
+                    if (item.thumbnails && item.thumbnails.length > 0) {
+                        thumbnail = item.thumbnails[item.thumbnails.length - 1].url;
+                    }
 
-                let thumbnail = '';
-                if (item.thumbnails && item.thumbnails.length > 0) {
-                    thumbnail = item.thumbnails[item.thumbnails.length - 1].url;
-                }
+                    return {
+                        id: item.videoId,
+                        title: item.title || '',
+                        artist: item.artists ? item.artists.map(a => a.name).join(', ') : '',
+                        channelId: item.artists?.[0]?.id || '',
+                        thumbnail: fixThumbnailUrl(thumbnail, item.videoId),
+                        duration: item.duration || '3:30',
+                        durationSeconds: item.duration_seconds || parseDuration(item.duration || '3:30'),
+                        rank: index + 1,
+                        moods: extractMoodTags(item.title || ''),
+                        source: 'charts'
+                    };
+                }).filter(t => t.id);
 
-                return {
-                    id: item.videoId,
-                    title: item.title || '',
-                    artist: item.artists ? item.artists.map(a => a.name).join(', ') : (item.subtitle || ''),
-                    channelId: item.artists && item.artists[0] ? item.artists[0].id : '',
-                    thumbnail: fixThumbnailUrl(thumbnail, item.videoId),
-                    duration: duration,
-                    durationSeconds: durationSeconds,
-                    rank: index + 1,
-                    moods: extractMoodTags(item.title || ''),
-                    views: item.views || ''
-                };
-            });
-
-            console.log(`[Trending] Found ${results.length} tracks via ytmusicapi`);
-            trendingCache.data = results;
-            trendingCache.timestamp = Date.now();
-            return results;
+                allTracks.push(...chartTracks);
+                sources.push('charts');
+                console.log(`[Trending] Got ${chartTracks.length} from charts`);
+            }
         }
     } catch (e) {
-        console.warn('[Trending] ytmusicapi failed:', e.message);
+        console.warn('[Trending] Charts failed:', e.message);
     }
 
-    // Fallback to YouTube Data API
-    try {
-        const data = await youtubeApiRequest('videos', {
-            part: 'snippet,contentDetails,statistics',
-            chart: 'mostPopular',
-            videoCategoryId: '10', // Music
-            regionCode: DEFAULT_REGION,
-            maxResults: maxResults
-        });
+    // Strategy 2: Try ytmusicapi get_trending (search fallback)
+    if (allTracks.length < maxResults) {
+        try {
+            const trendingData = await runMusicApi('get_trending', maxResults);
 
-        const results = (data.items || []).map((item, index) => {
-            const durationISO = item.contentDetails?.duration || 'PT0S';
-            const durationSeconds = parseDuration(durationISO);
+            if (trendingData && !trendingData.error && trendingData.trending && trendingData.trending.length > 0) {
+                const trendTracks = trendingData.trending.slice(0, 15).map((item, index) => {
+                    let thumbnail = '';
+                    if (item.thumbnails && item.thumbnails.length > 0) {
+                        thumbnail = item.thumbnails[item.thumbnails.length - 1].url;
+                    }
 
-            return {
-                id: item.id,
-                title: item.snippet.title,
-                artist: item.snippet.channelTitle,
-                channelId: item.snippet.channelId,
-                thumbnail: fixThumbnailUrl(item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url, item.id),
-                duration: formatDuration(durationSeconds),
-                durationSeconds,
-                rank: index + 1,
-                viewCount: item.statistics?.viewCount || '0',
-                moods: extractMoodTags(item.snippet.title)
-            };
-        });
+                    return {
+                        id: item.videoId,
+                        title: item.title || '',
+                        artist: item.artists ? item.artists.map(a => a.name).join(', ') : (item.subtitle || ''),
+                        channelId: item.artists?.[0]?.id || '',
+                        thumbnail: fixThumbnailUrl(thumbnail, item.videoId),
+                        duration: item.duration || '3:30',
+                        durationSeconds: item.duration_seconds || parseDuration(item.duration || '3:30'),
+                        rank: allTracks.length + index + 1,
+                        moods: extractMoodTags(item.title || ''),
+                        source: 'trending'
+                    };
+                }).filter(t => t.id && !allTracks.find(at => at.id === t.id));
 
-        console.log(`[Trending] Found ${results.length} trending tracks via YouTube API`);
-        trendingCache.data = results;
+                allTracks.push(...trendTracks);
+                sources.push('trending');
+                console.log(`[Trending] Got ${trendTracks.length} from get_trending`);
+            }
+        } catch (e) {
+            console.warn('[Trending] get_trending failed:', e.message);
+        }
+    }
+
+    // Strategy 3: Try ytmusicapi home feed for fresh picks
+    if (allTracks.length < maxResults) {
+        try {
+            const homeData = await runMusicApi('get_home');
+
+            if (homeData && Array.isArray(homeData) && homeData.length > 0) {
+                // Get songs from first few sections
+                for (const section of homeData.slice(0, 3)) {
+                    const sectionItems = (section.contents || [])
+                        .filter(item => item.videoId && !allTracks.find(at => at.id === item.videoId))
+                        .slice(0, 5)
+                        .map((item, index) => {
+                            let thumbnail = '';
+                            if (item.thumbnails && item.thumbnails.length > 0) {
+                                thumbnail = item.thumbnails[item.thumbnails.length - 1].url;
+                            }
+
+                            return {
+                                id: item.videoId,
+                                title: item.title || '',
+                                artist: item.artists ? item.artists.map(a => a.name).join(', ') : '',
+                                channelId: item.artists?.[0]?.id || '',
+                                thumbnail: fixThumbnailUrl(thumbnail, item.videoId),
+                                duration: item.duration || '3:30',
+                                durationSeconds: item.duration_seconds || parseDuration(item.duration || '3:30'),
+                                rank: allTracks.length + index + 1,
+                                moods: extractMoodTags(item.title || ''),
+                                source: 'home'
+                            };
+                        });
+
+                    allTracks.push(...sectionItems);
+                }
+                sources.push('home');
+                console.log(`[Trending] Added tracks from home feed`);
+            }
+        } catch (e) {
+            console.warn('[Trending] Home feed failed:', e.message);
+        }
+    }
+
+    // Strategy 4: Fallback to YouTube Data API
+    if (allTracks.length < 5) {
+        try {
+            const data = await youtubeApiRequest('videos', {
+                part: 'snippet,contentDetails,statistics',
+                chart: 'mostPopular',
+                videoCategoryId: '10', // Music
+                regionCode: DEFAULT_REGION,
+                maxResults: maxResults
+            });
+
+            const ytTracks = (data.items || []).map((item, index) => {
+                const durationISO = item.contentDetails?.duration || 'PT0S';
+                const durationSeconds = parseDuration(durationISO);
+
+                return {
+                    id: item.id,
+                    title: item.snippet.title,
+                    artist: item.snippet.channelTitle,
+                    channelId: item.snippet.channelId,
+                    thumbnail: fixThumbnailUrl(item.snippet.thumbnails?.high?.url, item.id),
+                    duration: formatDuration(durationSeconds),
+                    durationSeconds,
+                    rank: allTracks.length + index + 1,
+                    viewCount: item.statistics?.viewCount || '0',
+                    moods: extractMoodTags(item.snippet.title),
+                    source: 'youtube_api'
+                };
+            }).filter(t => !allTracks.find(at => at.id === t.id));
+
+            allTracks.push(...ytTracks);
+            sources.push('youtube_api');
+            console.log(`[Trending] Got ${ytTracks.length} from YouTube API`);
+        } catch (error) {
+            console.error('[Trending] YouTube API failed:', error.message);
+        }
+    }
+
+    // Strategy 5: Last resort - search for trending songs
+    if (allTracks.length < 5) {
+        try {
+            const searchQueries = [
+                'trending hindi songs 2024',
+                'latest bollywood songs',
+                'new music videos india'
+            ];
+            const query = searchQueries[Math.floor(Math.random() * searchQueries.length)];
+            const searchResults = await searchVideos(query, 15);
+
+            const searchTracks = searchResults
+                .filter(t => !allTracks.find(at => at.id === t.id))
+                .map((t, i) => ({ ...t, rank: allTracks.length + i + 1, source: 'search' }));
+
+            allTracks.push(...searchTracks);
+            sources.push('search');
+            console.log(`[Trending] Got ${searchTracks.length} from search fallback`);
+        } catch (e) {
+            console.error('[Trending] Search fallback failed:', e.message);
+        }
+    }
+
+    // Deduplicate by ID
+    const uniqueTracks = [];
+    const seenIds = new Set();
+    for (const track of allTracks) {
+        if (!seenIds.has(track.id)) {
+            seenIds.add(track.id);
+            uniqueTracks.push(track);
+        }
+    }
+
+    // Shuffle to add variety (but keep some order for "trending" feel)
+    // Shuffle only the middle portion, keep top 3 and last 3 stable
+    if (uniqueTracks.length > 10) {
+        const top = uniqueTracks.slice(0, 3);
+        const middle = uniqueTracks.slice(3, -3);
+        const bottom = uniqueTracks.slice(-3);
+
+        // Fisher-Yates shuffle for middle
+        for (let i = middle.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [middle[i], middle[j]] = [middle[j], middle[i]];
+        }
+
+        allTracks = [...top, ...middle, ...bottom];
+    } else {
+        allTracks = uniqueTracks;
+    }
+
+    // Re-rank after shuffle
+    allTracks = allTracks.slice(0, maxResults).map((track, index) => ({
+        ...track,
+        rank: index + 1
+    }));
+
+    console.log(`[Trending] Final: ${allTracks.length} tracks from sources: ${sources.join(', ')}`);
+
+    // Cache the results
+    if (allTracks.length > 0) {
+        trendingCache.data = allTracks;
         trendingCache.timestamp = Date.now();
-        return results;
-    } catch (error) {
-        console.error('[Trending] All methods failed:', error.message);
-        // Last resort fallback to search
-        return await searchVideos('trending hindi songs 2024', maxResults);
     }
+
+    return allTracks;
 }
+
 
 async function getRelatedVideos(videoId, maxResults = 20) {
     // First try ytmusicapi's watch playlist (best for music recommendations)
@@ -1590,15 +1737,53 @@ app.get('/search/suggestions', async (req, res) => {
 
 // ============ TRENDING ============
 
+// Get trending music (source: ytmusic | youtube | auto)
 app.get('/trending', async (req, res) => {
-    const { maxResults = 25 } = req.query;
+    const { maxResults = 25, source = 'auto' } = req.query;
 
     try {
-        const results = await getTrendingMusic(parseInt(maxResults));
+        let results = [];
+        let actualSource = 'ytmusicapi';
+
+        if (source === 'youtube') {
+            // Force use YouTube Data API only
+            console.log('[Trending] Using YouTube Data API...');
+            const data = await youtubeApiRequest('videos', {
+                part: 'snippet,contentDetails,statistics',
+                chart: 'mostPopular',
+                videoCategoryId: '10', // Music
+                regionCode: DEFAULT_REGION,
+                maxResults: parseInt(maxResults)
+            });
+
+            results = (data.items || []).map((item, index) => {
+                const durationISO = item.contentDetails?.duration || 'PT0S';
+                const durationSeconds = parseDuration(durationISO);
+
+                return {
+                    id: item.id,
+                    title: item.snippet.title,
+                    artist: item.snippet.channelTitle,
+                    channelId: item.snippet.channelId,
+                    thumbnail: fixThumbnailUrl(item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url, item.id),
+                    duration: formatDuration(durationSeconds),
+                    durationSeconds,
+                    rank: index + 1,
+                    viewCount: item.statistics?.viewCount || '0',
+                    moods: extractMoodTags(item.snippet.title)
+                };
+            });
+            actualSource = 'youtube';
+        } else {
+            // Use ytmusicapi (default or 'auto' or 'ytmusic')
+            results = await getTrendingMusic(parseInt(maxResults));
+            actualSource = 'ytmusicapi';
+        }
+
         const enrichedResults = attachQualityToSongs(results);
         res.json({
             results: enrichedResults,
-            source: 'youtube-api',
+            source: actualSource,
             lastUpdated: trendingCache.timestamp ? new Date(trendingCache.timestamp).toISOString() : new Date().toISOString()
         });
     } catch (error) {
@@ -1607,17 +1792,67 @@ app.get('/trending', async (req, res) => {
     }
 });
 
-// Force refresh trending cache
-app.post('/trending/refresh', async (req, res) => {
-    trendingCache.data = null;
-    trendingCache.timestamp = 0;
+// Get YouTube trending specifically (not YouTube Music)
+app.get('/trending/youtube', async (req, res) => {
+    const { maxResults = 25 } = req.query;
 
     try {
-        const results = await getTrendingMusic(25);
+        console.log('[Trending YouTube] Fetching from YouTube Data API...');
+        const data = await youtubeApiRequest('videos', {
+            part: 'snippet,contentDetails,statistics',
+            chart: 'mostPopular',
+            videoCategoryId: '10', // Music category
+            regionCode: DEFAULT_REGION,
+            maxResults: parseInt(maxResults)
+        });
+
+        const results = (data.items || []).map((item, index) => {
+            const durationISO = item.contentDetails?.duration || 'PT0S';
+            const durationSeconds = parseDuration(durationISO);
+
+            return {
+                id: item.id,
+                title: item.snippet.title,
+                artist: item.snippet.channelTitle,
+                channelId: item.snippet.channelId,
+                thumbnail: fixThumbnailUrl(item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url, item.id),
+                duration: formatDuration(durationSeconds),
+                durationSeconds,
+                rank: index + 1,
+                viewCount: item.statistics?.viewCount || '0',
+                likeCount: item.statistics?.likeCount || '0',
+                moods: extractMoodTags(item.snippet.title)
+            };
+        });
+
+        console.log(`[Trending YouTube] Found ${results.length} videos`);
+        const enrichedResults = attachQualityToSongs(results);
+        res.json({
+            results: enrichedResults,
+            source: 'youtube',
+            lastUpdated: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('[Trending YouTube] Error:', error.message);
+        res.json({ results: [], source: 'youtube', error: error.message });
+    }
+});
+
+// Force refresh trending cache
+app.post('/trending/refresh', async (req, res) => {
+    console.log('[Trending] Force refresh requested');
+
+    try {
+        // Clear cache and fetch fresh data
+        trendingCache.data = null;
+        trendingCache.timestamp = 0;
+
+        const results = await getTrendingMusic(25, true); // forceRefresh = true
         res.json({
             success: true,
-            message: 'Trending cache refreshed',
-            count: results.length
+            message: 'Trending cache refreshed with fresh data',
+            count: results.length,
+            sources: [...new Set(results.map(r => r.source).filter(Boolean))]
         });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -1634,6 +1869,392 @@ app.get('/home', async (req, res) => {
         res.json({ sections: [], error: error.message });
     }
 });
+
+// Get YouTube Music home page sections using ytmusicapi
+app.get('/home/sections', async (req, res) => {
+    try {
+        console.log('[Home] Fetching YouTube Music home sections...');
+        const homeData = await runMusicApi('get_home');
+
+        if (homeData && Array.isArray(homeData) && homeData.length > 0) {
+            // Format the sections
+            const sections = homeData.map(section => {
+                const items = (section.contents || []).map(item => {
+                    let thumbnail = '';
+                    if (item.thumbnails && item.thumbnails.length > 0) {
+                        thumbnail = item.thumbnails[item.thumbnails.length - 1].url;
+                    }
+
+                    let artist = '';
+                    if (item.artists && Array.isArray(item.artists)) {
+                        artist = item.artists.map(a => a.name).join(', ');
+                    } else if (item.author) {
+                        artist = item.author;
+                    }
+
+                    return {
+                        id: item.videoId || item.browseId || item.playlistId,
+                        title: item.title || '',
+                        artist: artist,
+                        thumbnail: fixThumbnailUrl(thumbnail, item.videoId),
+                        duration: item.duration || '3:30',
+                        durationSeconds: item.duration_seconds || parseDuration(item.duration || '3:30'),
+                        type: item.resultType || 'song'
+                    };
+                }).filter(item => item.id);
+
+                return {
+                    id: section.title?.toLowerCase().replace(/\s+/g, '-') || 'section',
+                    title: section.title || 'Music',
+                    type: 'horizontal',
+                    items: items
+                };
+            }).filter(section => section.items.length > 0);
+
+            console.log(`[Home] Found ${sections.length} sections from ytmusicapi`);
+            res.json({ sections, source: 'ytmusicapi' });
+        } else {
+            // Fallback to generated home feed
+            const sections = await generateHomeFeed();
+            res.json({ sections, source: 'fallback' });
+        }
+    } catch (error) {
+        console.error('[Home] Error:', error.message);
+        const sections = await generateHomeFeed();
+        res.json({ sections, source: 'fallback', error: error.message });
+    }
+});
+
+// Get personalized "For You" recommendations based on user habits
+app.get('/recommendations/for-you', async (req, res) => {
+    const limit = parseInt(req.query.limit) || 20;
+
+    try {
+        console.log('[ForYou] Generating personalized recommendations based on habits...');
+
+        const habits = initUserHabits();
+        const totalPlays = habits.listeningStats.totalPlays || 0;
+
+        // Get top artists (sorted by play count)
+        const topArtists = Object.entries(habits.artistPlayCounts || {})
+            .map(([id, data]) => ({ id, name: data.name, count: data.count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5);
+
+        // Get top moods
+        const topMoods = Object.entries(habits.moodPlayCounts || {})
+            .map(([mood, count]) => ({ mood, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 3);
+
+        // Get recently played for "more like this"
+        const recentlyPlayed = (habits.recentlyPlayed || []).slice(0, 10);
+
+        let results = [];
+        let recommendationReasons = [];
+
+        console.log(`[ForYou] User stats: ${totalPlays} plays, ${topArtists.length} artists, ${topMoods.length} moods`);
+
+        // === PERSONALIZED RECOMMENDATIONS (if user has history) ===
+        if (totalPlays >= 3) {
+
+            // Strategy 1: Get songs from user's top artists
+            if (topArtists.length > 0) {
+                const artistsToSearch = topArtists.slice(0, 3);
+
+                for (const artist of artistsToSearch) {
+                    if (results.length >= limit) break;
+
+                    try {
+                        const artistSongs = await searchVideos(`${artist.name} songs`, 8, 'songs');
+                        const newSongs = artistSongs
+                            .filter(s => !results.find(r => r.id === s.id))
+                            .slice(0, 3)
+                            .map(s => ({ ...s, reason: `Because you like ${artist.name}` }));
+
+                        results.push(...newSongs);
+                        if (newSongs.length > 0) {
+                            recommendationReasons.push(`${artist.name}`);
+                        }
+                    } catch (e) {
+                        console.warn(`[ForYou] Search for ${artist.name} failed`);
+                    }
+                }
+                console.log(`[ForYou] Got ${results.length} songs from top artists`);
+            }
+
+            // Strategy 2: Get songs based on mood preferences
+            if (topMoods.length > 0 && results.length < limit) {
+                const moodSearchTerms = {
+                    romantic: 'romantic hindi songs',
+                    sad: 'sad hindi songs emotional',
+                    happy: 'happy bollywood party songs',
+                    energetic: 'workout hindi songs pump',
+                    chill: 'lofi chill hindi songs',
+                    devotional: 'devotional bhajan songs',
+                    retro: 'old classic hindi songs 90s',
+                    punjabi: 'punjabi party songs',
+                    hiphop: 'desi hip hop rap songs'
+                };
+
+                for (const moodData of topMoods.slice(0, 2)) {
+                    if (results.length >= limit) break;
+
+                    const searchTerm = moodSearchTerms[moodData.mood] || `${moodData.mood} hindi songs`;
+                    try {
+                        const moodSongs = await searchVideos(searchTerm, 6, 'songs');
+                        const newSongs = moodSongs
+                            .filter(s => !results.find(r => r.id === s.id))
+                            .slice(0, 3)
+                            .map(s => ({ ...s, reason: `For your ${moodData.mood} mood` }));
+
+                        results.push(...newSongs);
+                    } catch (e) {
+                        console.warn(`[ForYou] Mood search failed: ${moodData.mood}`);
+                    }
+                }
+                console.log(`[ForYou] Added mood-based songs, total: ${results.length}`);
+            }
+
+            // Strategy 3: Get related songs from recently played
+            if (recentlyPlayed.length > 0 && results.length < limit) {
+                const seedSong = recentlyPlayed[0];
+                try {
+                    const relatedSongs = await getRelatedVideos(seedSong.id, 8);
+                    const newSongs = relatedSongs
+                        .filter(s => !results.find(r => r.id === s.id))
+                        .slice(0, 4)
+                        .map(s => ({ ...s, reason: `Similar to "${seedSong.title.slice(0, 30)}..."` }));
+
+                    results.push(...newSongs);
+                    console.log(`[ForYou] Added related songs from recent play`);
+                } catch (e) {
+                    console.warn('[ForYou] Related songs failed');
+                }
+            }
+
+            // Strategy 4: Mix in some songs from different artists user has listened to
+            if (topArtists.length > 3 && results.length < limit) {
+                const otherArtists = topArtists.slice(3, 5);
+                for (const artist of otherArtists) {
+                    if (results.length >= limit) break;
+
+                    try {
+                        const artistSongs = await searchVideos(`${artist.name} new songs`, 5, 'songs');
+                        const newSongs = artistSongs
+                            .filter(s => !results.find(r => r.id === s.id))
+                            .slice(0, 2)
+                            .map(s => ({ ...s, reason: `More from ${artist.name}` }));
+
+                        results.push(...newSongs);
+                    } catch (e) { }
+                }
+            }
+        }
+
+        // === DISCOVERY MODE (new users or not enough personalized results) ===
+        if (results.length < limit / 2) {
+            console.log('[ForYou] Adding discovery songs for variety...');
+
+            // Get songs from YouTube Music home for fresh picks
+            try {
+                const homeData = await runMusicApi('get_home');
+
+                if (homeData && Array.isArray(homeData)) {
+                    for (const section of homeData.slice(0, 4)) {
+                        if (results.length >= limit) break;
+
+                        const sectionItems = (section.contents || [])
+                            .filter(item => item.videoId && !results.find(r => r.id === item.videoId))
+                            .slice(0, 4)
+                            .map(item => {
+                                let thumbnail = '';
+                                if (item.thumbnails && item.thumbnails.length > 0) {
+                                    thumbnail = item.thumbnails[item.thumbnails.length - 1].url;
+                                }
+
+                                let artist = '';
+                                if (item.artists && Array.isArray(item.artists)) {
+                                    artist = item.artists.map(a => a.name).join(', ');
+                                }
+
+                                return {
+                                    id: item.videoId,
+                                    title: item.title,
+                                    artist: artist,
+                                    channelId: item.artists?.[0]?.id || '',
+                                    thumbnail: fixThumbnailUrl(thumbnail, item.videoId),
+                                    duration: item.duration || '3:30',
+                                    durationSeconds: item.duration_seconds || parseDuration(item.duration || '3:30'),
+                                    reason: section.title ? `From "${section.title}"` : 'Discover something new'
+                                };
+                            });
+
+                        results.push(...sectionItems);
+                    }
+                    console.log(`[ForYou] Added discovery songs, total: ${results.length}`);
+                }
+            } catch (e) {
+                console.warn('[ForYou] Home feed failed:', e.message);
+            }
+        }
+
+        // === FINAL FALLBACK: Trending ===
+        if (results.length < limit / 3) {
+            try {
+                const trending = await getTrendingMusic(limit);
+                const trendingSongs = trending
+                    .filter(t => !results.find(r => r.id === t.id))
+                    .slice(0, limit - results.length)
+                    .map(s => ({ ...s, reason: 'Trending now' }));
+
+                results.push(...trendingSongs);
+                console.log(`[ForYou] Added trending fallback, total: ${results.length}`);
+            } catch (e) {
+                console.warn('[ForYou] Trending fallback failed');
+            }
+        }
+
+        // Shuffle to mix personalized with discovery
+        results = results.sort(() => Math.random() - 0.5).slice(0, limit);
+
+        // Build personalized message
+        let message = '';
+        if (totalPlays >= 10 && topArtists.length > 0) {
+            message = `Based on ${topArtists.slice(0, 2).map(a => a.name).join(' & ')}`;
+            if (topMoods.length > 0) {
+                message += ` and your ${topMoods[0].mood} vibes`;
+            }
+        } else if (totalPlays >= 3) {
+            message = 'Getting to know your taste...';
+        } else {
+            message = 'Listen to more songs to personalize';
+        }
+
+        console.log(`[ForYou] Final: ${results.length} songs, personalized: ${totalPlays >= 3}`);
+
+        res.json({
+            results: attachQualityToSongs(results),
+            basedOn: {
+                topArtists: topArtists.slice(0, 3).map(a => a.name),
+                topMoods: topMoods.slice(0, 2).map(m => m.mood),
+                totalPlays,
+                message
+            },
+            source: totalPlays >= 3 ? 'personalized' : 'discovery'
+        });
+    } catch (error) {
+        console.error('[ForYou] Error:', error.message);
+        // Ultimate fallback
+        try {
+            const trending = await getTrendingMusic(limit);
+            res.json({
+                results: attachQualityToSongs(trending),
+                basedOn: { topArtists: [], topMoods: [], totalPlays: 0, message: 'Based on trending' },
+                source: 'trending_fallback'
+            });
+        } catch (e) {
+            res.json({ results: [], error: error.message });
+        }
+    }
+});
+
+// Get music charts (Top Songs, Top Videos, Top Artists)
+app.get('/charts', async (req, res) => {
+    const country = req.query.country || 'IN';
+
+    try {
+        console.log(`[Charts] Fetching charts for country: ${country}`);
+        const chartsData = await runMusicApi('get_charts', country);
+
+        if (chartsData && !chartsData.error) {
+            // Format charts data
+            const charts = {};
+
+            // Top Songs/Videos
+            if (chartsData.videos && chartsData.videos.items) {
+                charts.topSongs = chartsData.videos.items.slice(0, 20).map((item, index) => {
+                    let thumbnail = '';
+                    if (item.thumbnails && item.thumbnails.length > 0) {
+                        thumbnail = item.thumbnails[item.thumbnails.length - 1].url;
+                    }
+
+                    return {
+                        id: item.videoId,
+                        title: item.title,
+                        artist: item.artists ? item.artists.map(a => a.name).join(', ') : '',
+                        channelId: item.artists?.[0]?.id || '',
+                        thumbnail: fixThumbnailUrl(thumbnail, item.videoId),
+                        duration: item.duration || '3:30',
+                        durationSeconds: item.duration_seconds || parseDuration(item.duration || '3:30'),
+                        rank: index + 1,
+                        views: item.views || ''
+                    };
+                });
+            }
+
+            // Trending
+            if (chartsData.trending && chartsData.trending.items) {
+                charts.trending = chartsData.trending.items.slice(0, 20).map((item, index) => {
+                    let thumbnail = '';
+                    if (item.thumbnails && item.thumbnails.length > 0) {
+                        thumbnail = item.thumbnails[item.thumbnails.length - 1].url;
+                    }
+
+                    return {
+                        id: item.videoId,
+                        title: item.title,
+                        artist: item.artists ? item.artists.map(a => a.name).join(', ') : '',
+                        channelId: item.artists?.[0]?.id || '',
+                        thumbnail: fixThumbnailUrl(thumbnail, item.videoId),
+                        duration: item.duration || '3:30',
+                        durationSeconds: item.duration_seconds || parseDuration(item.duration || '3:30'),
+                        rank: index + 1
+                    };
+                });
+            }
+
+            // Top Artists
+            if (chartsData.artists && chartsData.artists.items) {
+                charts.topArtists = chartsData.artists.items.slice(0, 10).map((item, index) => {
+                    let thumbnail = '';
+                    if (item.thumbnails && item.thumbnails.length > 0) {
+                        thumbnail = item.thumbnails[item.thumbnails.length - 1].url;
+                    }
+
+                    return {
+                        id: item.browseId,
+                        name: item.title,
+                        thumbnail: thumbnail,
+                        subscribers: item.subscribers || '',
+                        rank: index + 1
+                    };
+                });
+            }
+
+            console.log(`[Charts] Found ${Object.keys(charts).length} chart types`);
+            res.json({ charts, country, source: 'ytmusicapi' });
+        } else {
+            // Fallback to trending
+            const trending = await getTrendingMusic(20);
+            res.json({
+                charts: { topSongs: trending, trending: trending },
+                country,
+                source: 'fallback'
+            });
+        }
+    } catch (error) {
+        console.error('[Charts] Error:', error.message);
+        const trending = await getTrendingMusic(20);
+        res.json({
+            charts: { topSongs: trending },
+            country,
+            source: 'fallback',
+            error: error.message
+        });
+    }
+});
+
 
 // ============ AUTOPLAY / RADIO ============
 
@@ -1990,6 +2611,88 @@ app.delete('/playlists/:playlistId', (req, res) => {
     const { playlistId } = req.params;
     db.playlists = db.playlists.filter(p => p.id !== playlistId);
     res.json({ success: true });
+});
+
+// ============ TRACK PLAY (for recommendations) ============
+
+// Track song play for personalized recommendations
+app.post('/track/play', (req, res) => {
+    try {
+        const { song } = req.body;
+
+        if (!song || !song.id) {
+            return res.status(400).json({ error: 'Song data required' });
+        }
+
+        console.log(`[Track] Recording play: ${song.title} by ${song.artist}`);
+
+        const habits = initUserHabits();
+
+        // Update song play count
+        if (!habits.songPlayCounts[song.id]) {
+            habits.songPlayCounts[song.id] = { count: 0, title: song.title, artist: song.artist };
+        }
+        habits.songPlayCounts[song.id].count++;
+        habits.songPlayCounts[song.id].lastPlayed = new Date().toISOString();
+
+        // Update artist play count
+        const artistId = song.channelId || song.artistId || song.artist;
+        if (artistId) {
+            if (!habits.artistPlayCounts[artistId]) {
+                habits.artistPlayCounts[artistId] = { count: 0, name: song.artist || 'Unknown' };
+            }
+            habits.artistPlayCounts[artistId].count++;
+            habits.artistPlayCounts[artistId].name = song.artist || habits.artistPlayCounts[artistId].name;
+        }
+
+        // Extract and update mood from title
+        const moods = extractMoodTags(song.title);
+        moods.forEach(mood => {
+            if (!habits.moodPlayCounts[mood]) {
+                habits.moodPlayCounts[mood] = 0;
+            }
+            habits.moodPlayCounts[mood]++;
+        });
+
+        // Update recently played
+        if (!habits.recentlyPlayed) habits.recentlyPlayed = [];
+        habits.recentlyPlayed = habits.recentlyPlayed.filter(s => s.id !== song.id);
+        habits.recentlyPlayed.unshift({
+            id: song.id,
+            title: song.title,
+            artist: song.artist,
+            thumbnail: song.thumbnail,
+            playedAt: new Date().toISOString()
+        });
+        habits.recentlyPlayed = habits.recentlyPlayed.slice(0, 50); // Keep last 50
+
+        // Update listening stats
+        if (!habits.listeningStats) {
+            habits.listeningStats = { totalPlays: 0 };
+        }
+        habits.listeningStats.totalPlays++;
+        habits.listeningStats.lastPlayedAt = new Date().toISOString();
+
+        // Recompute top artists and moods
+        habits.topArtists = Object.entries(habits.artistPlayCounts)
+            .map(([id, data]) => ({ id, name: data.name, count: data.count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10);
+
+        habits.topMoods = Object.entries(habits.moodPlayCounts)
+            .map(([mood, count]) => ({ mood, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5);
+
+        res.json({
+            success: true,
+            totalPlays: habits.listeningStats.totalPlays,
+            topArtists: habits.topArtists.slice(0, 3).map(a => a.name)
+        });
+    } catch (error) {
+        console.error('[Track] Error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // ============ EXPLORE ============

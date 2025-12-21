@@ -1,7 +1,8 @@
 import { ChevronRight, Sparkles, Loader2, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SongCard } from '@/components/cards/SongCard';
-import { usePlayerStore, Song } from '@/store/playerStore';
+import { usePlayerStore } from '@/store/playerStore';
+import { Song } from '@/types';
 import { useEffect, useState, useCallback } from 'react';
 import { getAutoplayQueue, YouTubeVideo } from '@/lib/youtube';
 import { Link } from 'react-router-dom';

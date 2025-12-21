@@ -1,6 +1,7 @@
 import { ChevronRight, History, Music } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { usePlayerStore, Song } from '@/store/playerStore';
+import { usePlayerStore } from '@/store/playerStore';
+import { Song } from '@/types';
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 

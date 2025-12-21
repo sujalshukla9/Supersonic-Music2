@@ -15,6 +15,7 @@ import ArtistDetails from "./pages/ArtistDetails";
 import Albums from "./pages/Albums";
 import AlbumDetails from "./pages/AlbumDetails";
 import Genre from "./pages/Genre";
+import TrackDetails from "./pages/TrackDetails";
 import NotFound from "./pages/NotFound";
 import History from "./pages/History";
 import Settings from "./pages/Settings";
@@ -56,6 +57,7 @@ const App = () => (
               <Route path="/albums" element={<Albums />} />
               <Route path="/album/:id" element={<AlbumDetails />} />
               <Route path="/genre/:genreName" element={<Genre />} />
+              <Route path="/track/:id" element={<TrackDetails />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Song } from '@/types';
+import { BACKEND_URL } from '@/config/api';
 
 const DB_NAME = 'supersonic-downloads';
 const DB_VERSION = 1;
@@ -162,9 +163,8 @@ export const useDownloadsStore = create<DownloadsState>()(
                 try {
                     console.log('[Downloads] Starting download:', song.title);
 
-                    // Get the stream URL from backend
-                    const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
-                    const streamUrl = `${backendUrl}/api/stream/${song.id}?quality=high`;
+                    // Get the stream URL from backend (uses centralized BACKEND_URL)
+                    const streamUrl = `${BACKEND_URL}/stream/${song.id}?quality=high`;
 
                     // Fetch the audio with progress tracking
                     const response = await fetch(streamUrl);

@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Clock, Flame, Loader2, RefreshCw } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import { useEffect, useState, useCallback } from 'react';
-import { Song } from '@/store/playerStore';
+import { Song } from '@/types';
 
 const AUTO_REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
 

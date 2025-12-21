@@ -6,7 +6,8 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Loader2, Play, Shuffle, Mic2, Users, CheckCircle2 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import { useEffect, useState } from 'react';
-import { Song, usePlayerStore } from '@/store/playerStore';
+import { usePlayerStore } from '@/store/playerStore';
+import { Song } from '@/types';
 
 interface ArtistData {
     id: string;

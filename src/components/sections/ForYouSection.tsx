@@ -1,8 +1,9 @@
-import { ChevronRight, Sparkles, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
+import { ChevronRight, Sparkles, Loader2, RefreshCw, AlertCircle, Play } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SongCard } from '@/components/cards/SongCard';
-import { usePlayerStore, Song } from '@/store/playerStore';
-import { useEffect, useState, useCallback } from 'react';
+import { usePlayerStore } from '@/store/playerStore';
+import { Song } from '@/types';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { BACKEND_URL } from '@/config/api';
 
@@ -31,19 +32,21 @@ export const ForYouSection = () => {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [basedOn, setBasedOn] = useState<BasedOnData | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [source, setSource] = useState<string>('');
+    const hasFetchedRef = useRef(false);
 
     const fetchRecommendations = useCallback(async (showRefresh = false) => {
         if (showRefresh) setIsRefreshing(true);
         setError(null);
 
         try {
-            // Try personalized recommendations first
+            // Fetch personalized recommendations from ytmusicapi-powered endpoint
             const response = await fetch(`${BACKEND_URL}/recommendations/for-you?limit=10`);
 
             if (response.ok) {
                 const data = await response.json();
                 if (data.results && data.results.length > 0) {
-                    console.log('[ForYou] Fetched recommendations:', data.results.length, 'songs');
+                    console.log('[ForYou] Fetched recommendations:', data.results.length, 'songs, source:', data.source);
                     const formattedSongs: Song[] = data.results.map((video: RecommendationResponse) => ({
                         id: video.id,
                         title: video.title,
@@ -55,6 +58,7 @@ export const ForYouSection = () => {
                         durationSeconds: video.durationSeconds || 210,
                     }));
                     setSongs(formattedSongs);
+                    setSource(data.source || 'ytmusicapi');
 
                     if (data.basedOn) {
                         setBasedOn(data.basedOn);
@@ -63,8 +67,39 @@ export const ForYouSection = () => {
                 }
             }
 
-            // Fallback to trending if recommendations fail
-            console.log('[ForYou] Recommendations failed, falling back to trending');
+            // Fallback to home sections
+            console.log('[ForYou] Primary endpoint failed, trying home sections...');
+            const homeSectionsResponse = await fetch(`${BACKEND_URL}/home/sections`);
+
+            if (homeSectionsResponse.ok) {
+                const homeData = await homeSectionsResponse.json();
+                if (homeData.sections && homeData.sections.length > 0) {
+                    // Get songs from the first section with songs
+                    const songsSection = homeData.sections.find((s: any) =>
+                        s.items && s.items.length > 0 && s.items[0].id
+                    );
+
+                    if (songsSection) {
+                        const formattedSongs: Song[] = songsSection.items.slice(0, 10).map((item: RecommendationResponse) => ({
+                            id: item.id,
+                            title: item.title,
+                            artist: item.artist || '',
+                            artistId: item.channelId,
+                            channelId: item.channelId,
+                            thumbnail: item.thumbnail,
+                            duration: item.duration || '3:30',
+                            durationSeconds: item.durationSeconds || 210,
+                        }));
+                        setSongs(formattedSongs);
+                        setSource('ytmusic_home');
+                        setBasedOn({ topArtists: [], topMoods: [], totalPlays: 0, message: songsSection.title });
+                        return;
+                    }
+                }
+            }
+
+            // Ultimate fallback to trending
+            console.log('[ForYou] Home sections failed, falling back to trending');
             const trendingResponse = await fetch(`${BACKEND_URL}/trending?maxResults=10`);
 
             if (trendingResponse.ok) {
@@ -81,6 +116,7 @@ export const ForYouSection = () => {
                         durationSeconds: video.durationSeconds || 210,
                     }));
                     setSongs(formattedSongs);
+                    setSource('trending_fallback');
                     setBasedOn({ topArtists: [], topMoods: [], totalPlays: 0, message: 'Based on trending' });
                     return;
                 }
@@ -98,7 +134,11 @@ export const ForYouSection = () => {
     }, []);
 
     useEffect(() => {
-        fetchRecommendations();
+        // Only fetch once on mount
+        if (!hasFetchedRef.current) {
+            hasFetchedRef.current = true;
+            fetchRecommendations();
+        }
     }, [fetchRecommendations]);
 
     const handleRefresh = () => {
@@ -145,6 +185,11 @@ export const ForYouSection = () => {
                                 {basedOn.message}
                             </p>
                         )}
+                        {source && source !== 'personalized' && !basedOn?.message && (
+                            <p className="text-xs text-muted-foreground opacity-60">
+                                Powered by YouTube Music
+                            </p>
+                        )}
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -153,8 +198,9 @@ export const ForYouSection = () => {
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
                             onClick={handlePlayAll}
-                            className="hidden sm:block px-3 py-1.5 text-xs font-semibold bg-purple-500/20 text-purple-400 rounded-full hover:bg-purple-500/30 transition-colors"
+                            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-purple-500/20 text-purple-400 rounded-full hover:bg-purple-500/30 transition-colors"
                         >
+                            <Play className="w-3 h-3 fill-current" />
                             Play All
                         </motion.button>
                     )}
