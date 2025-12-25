@@ -307,7 +307,7 @@ export const useSettingsStore = create<SettingsState>()(
             accentColor: 'violet',
             audioQuality: 'lossless',
             autoPlay: true,
-            crossfade: 3,
+            crossfade: 0, // Default: disabled (set > 0 in settings to enable)
             normalizeVolume: true,
             bassBoost: 0, // Default: no bass boost
             downloadQuality: 'high',

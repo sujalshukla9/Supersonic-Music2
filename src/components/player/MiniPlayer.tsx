@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayerStore } from '@/store/playerStore';
 import { useDownloadsStore } from '@/store/downloadsStore';
 import { Slider } from '@/components/ui/slider';
+// Note: Media Session is managed by RightPlayer.tsx which contains the audio element
 
 export const MiniPlayer = () => {
   const {
@@ -28,6 +29,9 @@ export const MiniPlayer = () => {
   useEffect(() => {
     setImageError(false);
   }, [currentSong?.id]);
+
+  // Note: Media Session API is handled centrally by RightPlayer.tsx
+  // which manages the actual audio element and playback state
 
   if (!currentSong) return null;
 

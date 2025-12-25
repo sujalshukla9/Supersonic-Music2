@@ -16,6 +16,7 @@ import { useDownloadsStore } from '../../store/downloadsStore';
 import { Slider } from '@/components/ui/slider';
 import { BACKEND_URL } from '@/config/api';
 import { getHighQualityThumbnail } from '@/lib/youtube';
+import { useMediaSession } from '@/hooks/useMediaSession';
 
 const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
@@ -151,6 +152,52 @@ export const RightPlayer = () => {
 
   // Play tracking for recommendations
   const hasTrackedPlay = useRef(false);
+
+  // ============================================
+  // MEDIA SESSION API - Android Rich Media Controls
+  // This enables:
+  // ✅ Rich thumbnail in notification & lock screen
+  // ✅ Play/Pause/Next/Previous buttons
+  // ✅ Bluetooth headset button support
+  // ✅ Seek bar in notification (Android 10+)
+  // ============================================
+  const handleSeekFromMediaSession = useCallback((time: number) => {
+    if (audioRef.current && Number.isFinite(time)) {
+      audioRef.current.currentTime = time;
+      setProgress(time);
+    }
+  }, [setProgress]);
+
+  const handleSeekForward = useCallback((seconds: number) => {
+    if (audioRef.current) {
+      const newTime = Math.min(audioRef.current.currentTime + seconds, audioRef.current.duration || 0);
+      audioRef.current.currentTime = newTime;
+      setProgress(newTime);
+    }
+  }, [setProgress]);
+
+  const handleSeekBackward = useCallback((seconds: number) => {
+    if (audioRef.current) {
+      const newTime = Math.max(audioRef.current.currentTime - seconds, 0);
+      audioRef.current.currentTime = newTime;
+      setProgress(newTime);
+    }
+  }, [setProgress]);
+
+  // Initialize Media Session with all handlers
+  useMediaSession({
+    currentSong,
+    isPlaying,
+    onPlay: togglePlay,
+    onPause: togglePlay,
+    onNextTrack: nextSong,
+    onPreviousTrack: previousSong,
+    onSeekTo: handleSeekFromMediaSession,
+    onSeekForward: handleSeekForward,
+    onSeekBackward: handleSeekBackward,
+    duration,
+    currentTime: progress,
+  });
 
   // Track song play to backend for personalized recommendations
   const trackPlayToBackend = useCallback(async (song: Song) => {
@@ -327,14 +374,15 @@ export const RightPlayer = () => {
         audioContextRef.current.resume();
       }
 
-      // FADE IN
-      if (gainNodeRef.current && audioContextRef.current && crossfade > 0) {
+      // FADE IN - Only apply during crossfade transitions (when isCrossfading was just reset)
+      // Don't fade in on normal play - that makes songs seem slow to start
+      // The crossfade fade-in is handled in the song change effect when coming from a crossfade
+      // For normal playback, ensure volume is at target level
+      if (gainNodeRef.current && audioContextRef.current && !isCrossfading) {
         const ctx = audioContextRef.current;
-        // Start from 0 (or current if fading)
+        // Set to target volume immediately for normal playback
         gainNodeRef.current.gain.cancelScheduledValues(ctx.currentTime);
-        gainNodeRef.current.gain.setValueAtTime(0, ctx.currentTime);
-        // Ramp to target volume
-        gainNodeRef.current.gain.linearRampToValueAtTime(volume / 100, ctx.currentTime + crossfade);
+        gainNodeRef.current.gain.setValueAtTime(volume / 100, ctx.currentTime);
       }
 
       // Only play if not already playing and has a valid source
@@ -353,16 +401,6 @@ export const RightPlayer = () => {
         }
       }
     } else {
-      // FADE OUT logic could go here, but pause is usually immediate.
-      // If we want fade out on pause:
-      /*
-      if (gainNodeRef.current && crossfade > 0) {
-          const ctx = audioContextRef.current;
-          gainNodeRef.current.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.5); // fast fade out
-          setTimeout(() => audio.pause(), 500);
-          return;
-      }
-      */
       // Wait for play promise to resolve before pausing to prevent AbortError
       if (playPromiseRef.current) {
         playPromiseRef.current.then(() => {
@@ -375,7 +413,7 @@ export const RightPlayer = () => {
         audio.pause();
       }
     }
-  }, [isPlaying, setIsPlaying, crossfade, volume]); // volume dep ensures we fade to correct level
+  }, [isPlaying, setIsPlaying, volume, isCrossfading]); // Removed crossfade dep to prevent re-triggering on setting change
 
   // Reset states when song changes
   useEffect(() => {
@@ -603,7 +641,7 @@ export const RightPlayer = () => {
               cleanup();
               resolve(false);
             }
-          }, 25000); // 25s timeout for loading
+          }, 15000); // 15s timeout for loading (reduced from 25s)
         });
       };
 

@@ -2,6 +2,14 @@ import { Play, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 
+// Get time-based greeting
+const getGreeting = (): string => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+};
+
 export const HeroBanner = () => {
   return (
     <motion.section
@@ -12,7 +20,7 @@ export const HeroBanner = () => {
       {/* Background Effects */}
       <div className="absolute top-0 right-0 w-64 sm:w-96 h-64 sm:h-96 bg-primary/30 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
       <div className="absolute bottom-0 left-1/4 w-48 sm:w-64 h-48 sm:h-64 bg-accent/30 rounded-full blur-3xl translate-y-1/2" />
-      
+
       {/* Floating Elements */}
       <motion.div
         animate={{ y: [0, -10, 0] }}
@@ -33,7 +41,7 @@ export const HeroBanner = () => {
           className="flex items-center gap-2 mb-3 sm:mb-4"
         >
           <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
-          <span className="text-xs sm:text-sm font-medium text-accent">Good evening, John!</span>
+          <span className="text-xs sm:text-sm font-medium text-accent">{getGreeting()}!</span>
         </motion.div>
 
         <motion.h1

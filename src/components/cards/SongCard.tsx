@@ -4,7 +4,7 @@ import { usePlayerStore } from '@/store/playerStore';
 import { Song } from '@/types';
 import { useLikesStore } from '@/store/likesStore';
 import { useDownloadsStore } from '@/store/downloadsStore';
-import { useState, MouseEvent } from 'react';
+import { useState, useEffect, MouseEvent } from 'react';
 import { getHighQualityThumbnail } from '@/lib/youtube';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -31,6 +31,11 @@ export const SongCard = ({ song, index, showIndex }: SongCardProps) => {
   const songIsLiked = isLiked(song.id);
   const songIsDownloaded = isDownloaded(song.id);
   const downloadProgress = getDownloadProgress(song.id);
+
+  // Reset image error when song changes
+  useEffect(() => {
+    setImageError(false);
+  }, [song.id]);
 
   const handlePlay = () => {
     if (isCurrentSong) {

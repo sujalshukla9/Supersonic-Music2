@@ -8,6 +8,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { Slider } from '@/components/ui/slider';
 import { Song } from '@/types';
 import { getHighQualityThumbnail } from '@/lib/youtube';
+// Note: Media Session is managed by RightPlayer.tsx which contains the audio element
 
 const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
@@ -97,6 +98,9 @@ export const FullPlayer = () => {
   useEffect(() => {
     setCoverImageError(false);
   }, [currentSong?.id]);
+
+  // Note: Media Session API is handled centrally by RightPlayer.tsx
+  // which manages the actual audio element and playback state
 
   if (!currentSong || !isFullPlayer) return null;
 
