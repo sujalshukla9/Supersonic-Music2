@@ -1,9 +1,18 @@
-import { Play, Pause, SkipBack, SkipForward, Volume2, ChevronUp, ListMusic, Music, Download, Check, Loader2 } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, ChevronUp, ListMusic, Music, Download, Check, Loader2, FolderPlus, Plus } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayerStore } from '@/store/playerStore';
 import { useDownloadsStore } from '@/store/downloadsStore';
+import { usePlaylistStore } from '@/store/playlistStore';
 import { Slider } from '@/components/ui/slider';
+import { toast } from 'sonner';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 // Note: Media Session is managed by RightPlayer.tsx which contains the audio element
 
 export const MiniPlayer = () => {
@@ -23,6 +32,7 @@ export const MiniPlayer = () => {
   } = usePlayerStore();
 
   const { downloadSong, isDownloaded, getDownloadProgress } = useDownloadsStore();
+  const { playlists, addSongToPlaylist, createPlaylist } = usePlaylistStore();
 
   const [imageError, setImageError] = useState(false);
 
@@ -44,6 +54,18 @@ export const MiniPlayer = () => {
     if (!songIsDownloaded && !downloadProgress) {
       downloadSong(currentSong);
     }
+  };
+
+  const handleAddToPlaylist = (playlistId: string) => {
+    addSongToPlaylist(playlistId, currentSong);
+    const playlist = playlists.find(p => p.id === playlistId);
+    toast.success(`Added to ${playlist?.name || 'playlist'}`);
+  };
+
+  const handleCreatePlaylistWithSong = () => {
+    const newPlaylist = createPlaylist(`My Playlist ${playlists.length + 1}`);
+    addSongToPlaylist(newPlaylist.id, currentSong);
+    toast.success(`Created playlist and added song`);
   };
 
   return (
@@ -161,9 +183,43 @@ export const MiniPlayer = () => {
               onClick={openFullPlayerWithQueue}
               className="p-2 rounded-full transition-colors text-muted-foreground hover:text-foreground hover:bg-secondary/50"
               whileHover={{ scale: 1.1 }}
+              title="Queue"
             >
               <ListMusic className="w-5 h-5" />
             </motion.button>
+
+            {/* Add to Playlist Button */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <motion.button
+                  className="p-2 rounded-full transition-colors text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                  whileHover={{ scale: 1.1 }}
+                  title="Add to Playlist"
+                >
+                  <FolderPlus className="w-5 h-5" />
+                </motion.button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 max-h-64 overflow-y-auto">
+                <DropdownMenuItem onClick={handleCreatePlaylistWithSong}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create New Playlist
+                </DropdownMenuItem>
+                {playlists.length > 0 && <DropdownMenuSeparator />}
+                {playlists.map((p) => (
+                  <DropdownMenuItem
+                    key={p.id}
+                    onClick={() => handleAddToPlaylist(p.id)}
+                  >
+                    <ListMusic className="w-4 h-4 mr-2" />
+                    {p.name}
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      {p.songs.length}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <motion.button
               onClick={toggleFullPlayer}
               className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"

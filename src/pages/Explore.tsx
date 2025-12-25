@@ -182,7 +182,7 @@ const Explore = () => {
                     exit={{ opacity: 0, x: 20 }}
                     transition={{ delay: index * 0.05 }}
                   >
-                    <SongCard song={song} index={index} />
+                    <SongCard song={song} index={index} playlist={newReleases} />
                   </motion.div>
                 ))}
               </AnimatePresence>

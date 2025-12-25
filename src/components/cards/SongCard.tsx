@@ -1,9 +1,10 @@
-import { Play, Pause, MoreHorizontal, Heart, Music, Download, Check, Loader2, ListPlus, PlayCircle, User } from 'lucide-react';
+import { Play, Pause, MoreHorizontal, Heart, Music, Download, Check, Loader2, ListPlus, PlayCircle, User, FolderPlus, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePlayerStore } from '@/store/playerStore';
 import { Song } from '@/types';
 import { useLikesStore } from '@/store/likesStore';
 import { useDownloadsStore } from '@/store/downloadsStore';
+import { usePlaylistStore } from '@/store/playlistStore';
 import { useState, useEffect, MouseEvent } from 'react';
 import { getHighQualityThumbnail } from '@/lib/youtube';
 import { useNavigate } from 'react-router-dom';
@@ -13,19 +14,27 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuPortal,
 } from '@/components/ui/dropdown-menu';
+import { toast } from 'sonner';
 
 interface SongCardProps {
   song: Song;
   index?: number;
   showIndex?: boolean;
+  /** Optional: Pass the full list of songs to set as queue when playing */
+  playlist?: Song[];
 }
 
-export const SongCard = ({ song, index, showIndex }: SongCardProps) => {
+export const SongCard = ({ song, index, showIndex, playlist }: SongCardProps) => {
   const navigate = useNavigate();
   const { currentSong, isPlaying, playSong, togglePlay, queue, setQueue, addToQueue, addToQueueNext } = usePlayerStore();
   const { isLiked, toggleLike } = useLikesStore();
   const { downloadSong, isDownloaded, getDownloadProgress } = useDownloadsStore();
+  const { playlists, addSongToPlaylist, createPlaylist } = usePlaylistStore();
   const [imageError, setImageError] = useState(false);
   const isCurrentSong = currentSong?.id === song.id;
   const songIsLiked = isLiked(song.id);
@@ -41,8 +50,12 @@ export const SongCard = ({ song, index, showIndex }: SongCardProps) => {
     if (isCurrentSong) {
       togglePlay();
     } else {
-      // Add song to queue if not already there
-      if (!queue.find(s => s.id === song.id)) {
+      // If playlist is provided, set the entire playlist as the queue
+      // This ensures "next" and "previous" work correctly
+      if (playlist && playlist.length > 0) {
+        setQueue(playlist);
+      } else if (!queue.find(s => s.id === song.id)) {
+        // Fallback: Add song to queue if not already there
         setQueue([...queue, song]);
       }
       playSong(song);
@@ -73,6 +86,18 @@ export const SongCard = ({ song, index, showIndex }: SongCardProps) => {
     if (song.channelId || song.artistId) {
       navigate(`/artist/${song.channelId || song.artistId}`);
     }
+  };
+
+  const handleAddToPlaylist = (playlistId: string) => {
+    addSongToPlaylist(playlistId, song);
+    const playlist = playlists.find(p => p.id === playlistId);
+    toast.success(`Added to ${playlist?.name || 'playlist'}`);
+  };
+
+  const handleCreatePlaylistWithSong = () => {
+    const newPlaylist = createPlaylist(`My Playlist ${playlists.length + 1}`);
+    addSongToPlaylist(newPlaylist.id, song);
+    toast.success(`Created playlist and added song`);
   };
 
   return (
@@ -203,6 +228,36 @@ export const SongCard = ({ song, index, showIndex }: SongCardProps) => {
               <ListPlus className="w-4 h-4 mr-2" />
               Add to Queue
             </DropdownMenuItem>
+
+            {/* Add to Playlist Sub-menu */}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <FolderPlus className="w-4 h-4 mr-2" />
+                Add to Playlist
+              </DropdownMenuSubTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent className="w-48 max-h-64 overflow-y-auto">
+                  <DropdownMenuItem onClick={handleCreatePlaylistWithSong}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create New Playlist
+                  </DropdownMenuItem>
+                  {playlists.length > 0 && <DropdownMenuSeparator />}
+                  {playlists.map((p) => (
+                    <DropdownMenuItem
+                      key={p.id}
+                      onClick={() => handleAddToPlaylist(p.id)}
+                    >
+                      <ListPlus className="w-4 h-4 mr-2" />
+                      {p.name}
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {p.songs.length}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
+
             <DropdownMenuSeparator />
             {(song.channelId || song.artistId) && (
               <DropdownMenuItem onClick={handleGoToArtist}>

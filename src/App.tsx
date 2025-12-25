@@ -10,6 +10,7 @@ import { MainLayout } from './components/layout/MainLayout';
 import Explore from "./pages/Explore";
 import Favorites from "./pages/Favorites";
 import Playlists from "./pages/Playlists";
+import PlaylistDetails from "./pages/PlaylistDetails";
 import Artists from "./pages/Artists";
 import ArtistDetails from "./pages/ArtistDetails";
 import Albums from "./pages/Albums";
@@ -50,6 +51,7 @@ const App = () => (
               <Route path="/explore" element={<Explore />} />
               <Route path="/favorites" element={<Favorites />} />
               <Route path="/playlists" element={<Playlists />} />
+              <Route path="/playlist/:id" element={<PlaylistDetails />} />
               <Route path="/history" element={<History />} />
               <Route path="/downloads" element={<Downloads />} />
               <Route path="/artists" element={<Artists />} />

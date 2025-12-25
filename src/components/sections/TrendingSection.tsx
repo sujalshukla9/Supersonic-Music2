@@ -227,7 +227,7 @@ export const TrendingSection = () => {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
                 >
-                  <SongCard song={song} index={index} showIndex />
+                  <SongCard song={song} index={index} showIndex playlist={songs} />
                 </motion.div>
               ))}
             </motion.div>

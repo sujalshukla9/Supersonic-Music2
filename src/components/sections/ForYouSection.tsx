@@ -273,7 +273,7 @@ export const ForYouSection = () => {
                                     animate={{ opacity: 1, x: 0 }}
                                     transition={{ delay: index * 0.08 }}
                                 >
-                                    <SongCard song={song} index={index} showIndex />
+                                    <SongCard song={song} index={index} showIndex playlist={songs} />
                                 </motion.div>
                             ))}
                         </motion.div>

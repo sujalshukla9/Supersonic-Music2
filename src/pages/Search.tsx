@@ -235,7 +235,7 @@ const Search = () => {
                       <div className="glass-card p-3 sm:p-4">
                         <div className="space-y-1">
                           {songs.slice(0, 10).map((song, index) => (
-                            <SongCard key={song.id} song={song} index={index} />
+                            <SongCard key={song.id} song={song} index={index} playlist={songs} />
                           ))}
                         </div>
                         {songs.length > 10 && (
@@ -280,7 +280,7 @@ const Search = () => {
                     <div className="glass-card p-3 sm:p-4">
                       <div className="space-y-1">
                         {songs.map((song, index) => (
-                          <SongCard key={song.id} song={song} index={index} />
+                          <SongCard key={song.id} song={song} index={index} playlist={songs} />
                         ))}
                       </div>
                     </div>

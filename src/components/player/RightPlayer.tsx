@@ -1,11 +1,16 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, ChevronDown, MoreHorizontal, Heart, ListMusic, Radio, Volume2, VolumeX, Music, Share2, Download, Check, Loader2 } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, ChevronDown, MoreHorizontal, Heart, ListMusic, Radio, Volume2, VolumeX, Music, Share2, Download, Check, Loader2, FolderPlus, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuPortal,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayerStore } from '../../store/playerStore';
@@ -17,6 +22,8 @@ import { Slider } from '@/components/ui/slider';
 import { BACKEND_URL } from '@/config/api';
 import { getHighQualityThumbnail } from '@/lib/youtube';
 import { useMediaSession } from '@/hooks/useMediaSession';
+import { usePlaylistStore } from '@/store/playlistStore';
+import { toast } from 'sonner';
 
 const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
@@ -87,6 +94,54 @@ const QueueItem = ({ song, index, isPlaying }: { song: Song; index: number; isPl
       </div>
       <span className="text-xs text-muted-foreground">{song.duration}</span>
     </motion.div>
+  );
+};
+
+// Add to Playlist Submenu component
+const AddToPlaylistSubmenu = ({ song }: { song: Song }) => {
+  const { playlists, addSongToPlaylist, createPlaylist } = usePlaylistStore();
+
+  const handleAddToPlaylist = (playlistId: string) => {
+    addSongToPlaylist(playlistId, song);
+    const playlist = playlists.find(p => p.id === playlistId);
+    toast.success(`Added to ${playlist?.name || 'playlist'}`);
+  };
+
+  const handleCreatePlaylistWithSong = () => {
+    const newPlaylist = createPlaylist(`My Playlist ${playlists.length + 1}`);
+    addSongToPlaylist(newPlaylist.id, song);
+    toast.success(`Created playlist and added song`);
+  };
+
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className="cursor-pointer">
+        <ListMusic className="w-4 h-4 mr-2" />
+        Add to Playlist
+      </DropdownMenuSubTrigger>
+      <DropdownMenuPortal>
+        <DropdownMenuSubContent className="w-48 max-h-64 overflow-y-auto">
+          <DropdownMenuItem onClick={handleCreatePlaylistWithSong} className="cursor-pointer">
+            <ListMusic className="w-4 h-4 mr-2" />
+            Create New Playlist
+          </DropdownMenuItem>
+          {playlists.length > 0 && <DropdownMenuSeparator />}
+          {playlists.map((p) => (
+            <DropdownMenuItem
+              key={p.id}
+              onClick={() => handleAddToPlaylist(p.id)}
+              className="cursor-pointer"
+            >
+              <ListMusic className="w-4 h-4 mr-2" />
+              {p.name}
+              <span className="ml-auto text-xs text-muted-foreground">
+                {p.songs.length}
+              </span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuSubContent>
+      </DropdownMenuPortal>
+    </DropdownMenuSub>
   );
 };
 
@@ -908,7 +963,7 @@ export const RightPlayer = () => {
                       </div>
                     </div>
                     <div className="flex-1 overflow-y-auto space-y-1 pr-2 scrollbar-thin">
-                      {queue.slice(currentIndex + 1, currentIndex + 21).map((song, idx) => (
+                      {queue.slice(Math.max(0, currentIndex + 1), Math.max(0, currentIndex + 1) + 20).map((song, idx) => (
                         <QueueItem
                           key={song.id}
                           song={song}
@@ -916,7 +971,7 @@ export const RightPlayer = () => {
                           isPlaying={false}
                         />
                       ))}
-                      {queue.length <= currentIndex + 1 && (
+                      {(currentIndex === -1 ? queue.length === 0 : queue.length <= currentIndex + 1) && (
                         <div className="text-center text-muted-foreground text-sm py-8">
                           {autoPlay ? 'More songs will be added automatically' : 'Queue is empty'}
                         </div>
@@ -1096,6 +1151,9 @@ export const RightPlayer = () => {
                             )}
                             {isDownloaded(currentSong.id) ? 'Downloaded' : getDownloadProgress(currentSong.id) ? 'Downloading...' : 'Download Offline'}
                           </DropdownMenuItem>
+
+                          {/* Add to Playlist Submenu */}
+                          <AddToPlaylistSubmenu song={currentSong} />
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>

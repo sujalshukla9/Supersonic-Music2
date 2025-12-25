@@ -113,15 +113,30 @@ export const usePlayerStore = create<PlayerState>()(
 
             // Play a song
             playSong: (song) => {
-                const { addToHistory, queue } = get();
+                const { addToHistory, queue, currentSong } = get();
 
                 // Add to history
                 addToHistory(song);
 
-                // Add to queue if not already there
-                if (!queue.find(s => s.id === song.id)) {
-                    set({ queue: [...queue, song] });
+                // Check if song is already in queue
+                const existingIndex = queue.findIndex(s => s.id === song.id);
+
+                if (existingIndex === -1) {
+                    // Song not in queue - insert it after current song position
+                    const currentIndex = currentSong ? queue.findIndex(s => s.id === currentSong.id) : -1;
+                    const newQueue = [...queue];
+
+                    if (currentIndex >= 0) {
+                        // Insert right after current song
+                        newQueue.splice(currentIndex + 1, 0, song);
+                    } else {
+                        // No current song, add to beginning
+                        newQueue.unshift(song);
+                    }
+
+                    set({ queue: newQueue });
                 }
+                // If song IS in queue, we just switch to it (no queue modification needed)
 
                 set({
                     currentSong: song,

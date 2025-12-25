@@ -2928,6 +2928,156 @@ app.post('/user/habits/reset', (req, res) => {
     res.json({ success: true, message: 'Listening habits reset' });
 });
 
+// ============ PLAYLISTS ============
+
+// Get all user playlists
+app.get('/playlists', (req, res) => {
+    res.json({ playlists: db.playlists || [] });
+});
+
+// Create a new playlist
+app.post('/playlists', (req, res) => {
+    const { name, description } = req.body;
+
+    if (!name || !name.trim()) {
+        return res.status(400).json({ error: 'Playlist name is required' });
+    }
+
+    const playlist = {
+        id: `playlist_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: name.trim(),
+        description: description?.trim() || '',
+        songs: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+    };
+
+    if (!db.playlists) db.playlists = [];
+    db.playlists.unshift(playlist);
+
+    console.log('[Playlist] Created:', playlist.name);
+    res.json({ playlist });
+});
+
+// Delete a playlist
+app.delete('/playlists/:id', (req, res) => {
+    const { id } = req.params;
+
+    if (!db.playlists) {
+        return res.status(404).json({ error: 'Playlist not found' });
+    }
+
+    const index = db.playlists.findIndex(p => p.id === id);
+    if (index === -1) {
+        return res.status(404).json({ error: 'Playlist not found' });
+    }
+
+    db.playlists.splice(index, 1);
+    console.log('[Playlist] Deleted:', id);
+    res.json({ success: true });
+});
+
+// Get a specific playlist
+app.get('/playlists/:id', (req, res) => {
+    const { id } = req.params;
+
+    const playlist = (db.playlists || []).find(p => p.id === id);
+    if (!playlist) {
+        return res.status(404).json({ error: 'Playlist not found' });
+    }
+
+    res.json({ playlist });
+});
+
+// Update a playlist (name, description)
+app.put('/playlists/:id', (req, res) => {
+    const { id } = req.params;
+    const { name, description } = req.body;
+
+    const playlist = (db.playlists || []).find(p => p.id === id);
+    if (!playlist) {
+        return res.status(404).json({ error: 'Playlist not found' });
+    }
+
+    if (name) playlist.name = name.trim();
+    if (description !== undefined) playlist.description = description.trim();
+    playlist.updatedAt = new Date().toISOString();
+
+    res.json({ playlist });
+});
+
+// Add a song to a playlist
+app.post('/playlists/:id/add', (req, res) => {
+    const { id } = req.params;
+    const { song } = req.body;
+
+    if (!song || !song.id) {
+        return res.status(400).json({ error: 'Song data is required' });
+    }
+
+    const playlist = (db.playlists || []).find(p => p.id === id);
+    if (!playlist) {
+        return res.status(404).json({ error: 'Playlist not found' });
+    }
+
+    // Check if song already exists
+    if (playlist.songs.some(s => s.id === song.id)) {
+        return res.status(400).json({ error: 'Song already in playlist' });
+    }
+
+    playlist.songs.push(song);
+    playlist.updatedAt = new Date().toISOString();
+
+    // Update thumbnail to first song if not set
+    if (!playlist.thumbnail && song.thumbnail) {
+        playlist.thumbnail = song.thumbnail;
+    }
+
+    console.log('[Playlist] Added song to', playlist.name, ':', song.title);
+    res.json({ success: true, playlist });
+});
+
+// Remove a song from a playlist
+app.delete('/playlists/:id/songs/:songId', (req, res) => {
+    const { id, songId } = req.params;
+
+    const playlist = (db.playlists || []).find(p => p.id === id);
+    if (!playlist) {
+        return res.status(404).json({ error: 'Playlist not found' });
+    }
+
+    const songIndex = playlist.songs.findIndex(s => s.id === songId);
+    if (songIndex === -1) {
+        return res.status(404).json({ error: 'Song not found in playlist' });
+    }
+
+    playlist.songs.splice(songIndex, 1);
+    playlist.updatedAt = new Date().toISOString();
+
+    // Update thumbnail if we removed the first song
+    if (playlist.songs.length > 0) {
+        playlist.thumbnail = playlist.songs[0].thumbnail;
+    } else {
+        playlist.thumbnail = null;
+    }
+
+    console.log('[Playlist] Removed song from', playlist.name);
+    res.json({ success: true, playlist });
+});
+
+// Sync playlists from frontend (full replacement)
+app.post('/playlists/sync', (req, res) => {
+    const { playlists } = req.body;
+
+    if (!Array.isArray(playlists)) {
+        return res.status(400).json({ error: 'Playlists array is required' });
+    }
+
+    db.playlists = playlists;
+    console.log('[Playlist] Synced', playlists.length, 'playlists from frontend');
+    res.json({ success: true, count: playlists.length });
+});
+
 // ============ SETTINGS ============
 
 app.get('/settings', (req, res) => {

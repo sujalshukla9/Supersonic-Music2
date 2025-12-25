@@ -89,7 +89,7 @@ const Favorites = () => {
           >
             <div className="space-y-1">
               {likedSongs.map((song, index) => (
-                <SongCard key={song.id} song={song} index={index} showIndex />
+                <SongCard key={song.id} song={song} index={index} showIndex playlist={likedSongs} />
               ))}
             </div>
           </motion.div>

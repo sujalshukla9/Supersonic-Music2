@@ -168,7 +168,7 @@ const Artists = () => {
                                     <div className="space-y-1">
                                         {featuredSongs.map((song, index) => (
                                             <div key={song.id} onClick={() => handlePlayFeatured(index)}>
-                                                <SongCard song={song} index={index} showIndex />
+                                                <SongCard song={song} index={index} showIndex playlist={featuredSongs} />
                                             </div>
                                         ))}
                                     </div>

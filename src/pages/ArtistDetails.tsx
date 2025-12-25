@@ -205,7 +205,7 @@ const ArtistDetails = () => {
                             <div className="glass-card p-4 rounded-2xl">
                                 <div className="space-y-1">
                                     {songs.map((song, index) => (
-                                        <SongCard key={song.id} song={song} index={index} showIndex />
+                                        <SongCard key={song.id} song={song} index={index} showIndex playlist={songs} />
                                     ))}
                                 </div>
                             </div>

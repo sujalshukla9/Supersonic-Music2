@@ -1,13 +1,22 @@
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Shuffle, Repeat, Repeat1, ChevronDown, Heart, Share2, ListMusic, Music, Download, Check, Loader2, Radio } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Shuffle, Repeat, Repeat1, ChevronDown, Heart, Share2, ListMusic, Music, Download, Check, Loader2, Radio, FolderPlus, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { usePlayerStore } from '@/store/playerStore';
 import { useLikesStore } from '@/store/likesStore';
 import { useDownloadsStore } from '@/store/downloadsStore';
+import { usePlaylistStore } from '@/store/playlistStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { Slider } from '@/components/ui/slider';
 import { Song } from '@/types';
 import { getHighQualityThumbnail } from '@/lib/youtube';
+import { toast } from 'sonner';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 // Note: Media Session is managed by RightPlayer.tsx which contains the audio element
 
 const formatTime = (seconds: number) => {
@@ -58,6 +67,55 @@ const QueueItemFull = ({ song, index, isCurrentSong }: { song: Song; index: numb
       </div>
       <span className="text-xs text-muted-foreground">{song.duration}</span>
     </motion.div>
+  );
+};
+
+// Add to Playlist Button component
+const AddToPlaylistButton = ({ song }: { song: Song }) => {
+  const { playlists, addSongToPlaylist, createPlaylist } = usePlaylistStore();
+
+  const handleAddToPlaylist = (playlistId: string) => {
+    addSongToPlaylist(playlistId, song);
+    const playlist = playlists.find(p => p.id === playlistId);
+    toast.success(`Added to ${playlist?.name || 'playlist'}`);
+  };
+
+  const handleCreatePlaylistWithSong = () => {
+    const newPlaylist = createPlaylist(`My Playlist ${playlists.length + 1}`);
+    addSongToPlaylist(newPlaylist.id, song);
+    toast.success(`Created playlist and added song`);
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="p-2 rounded-full hover:bg-secondary/50 transition-colors"
+          title="Add to Playlist"
+        >
+          <FolderPlus className="w-5 h-5 sm:w-6 sm:h-6" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="center" className="w-48 max-h-64 overflow-y-auto">
+        <DropdownMenuItem onClick={handleCreatePlaylistWithSong}>
+          <Plus className="w-4 h-4 mr-2" />
+          Create New Playlist
+        </DropdownMenuItem>
+        {playlists.length > 0 && <DropdownMenuSeparator />}
+        {playlists.map((p) => (
+          <DropdownMenuItem
+            key={p.id}
+            onClick={() => handleAddToPlaylist(p.id)}
+          >
+            <ListMusic className="w-4 h-4 mr-2" />
+            {p.name}
+            <span className="ml-auto text-xs text-muted-foreground">
+              {p.songs.length}
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };
 
@@ -180,7 +238,7 @@ export const FullPlayer = () => {
                   </div>
                 </div>
                 <div className="flex-1 overflow-y-auto space-y-2 pr-2 scrollbar-thin">
-                  {queue.slice(currentIndex + 1, currentIndex + 21).map((song, idx) => (
+                  {queue.slice(Math.max(0, currentIndex + 1), Math.max(0, currentIndex + 1) + 20).map((song, idx) => (
                     <QueueItemFull
                       key={song.id}
                       song={song}
@@ -188,7 +246,7 @@ export const FullPlayer = () => {
                       isCurrentSong={false}
                     />
                   ))}
-                  {queue.length <= currentIndex + 1 && (
+                  {(currentIndex === -1 ? queue.length === 0 : queue.length <= currentIndex + 1) && (
                     <div className="text-center text-muted-foreground text-sm py-12">
                       {autoPlay ? 'More songs will be added automatically' : 'Queue is empty'}
                     </div>
@@ -281,14 +339,21 @@ export const FullPlayer = () => {
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(`${window.location.origin}/track/${currentSong.id}`);
+                      toast.success('Link copied to clipboard');
                     }}
                     className="p-2 rounded-full hover:bg-secondary/50 transition-colors"
+                    title="Share"
                   >
                     <Share2 className="w-5 h-5 sm:w-6 sm:h-6" />
                   </button>
+
+                  {/* Add to Playlist Button */}
+                  <AddToPlaylistButton song={currentSong} />
+
                   <button
                     onClick={() => setShowQueueInFullPlayer(true)}
                     className="p-2 rounded-full hover:bg-secondary/50 transition-colors"
+                    title="Queue"
                   >
                     <ListMusic className="w-5 h-5 sm:w-6 sm:h-6" />
                   </button>

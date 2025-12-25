@@ -195,7 +195,7 @@ export const RecommendationsSection = () => {
                                     animate={{ opacity: 1, x: 0 }}
                                     transition={{ delay: index * 0.05 }}
                                 >
-                                    <SongCard song={song} index={index} />
+                                    <SongCard song={song} index={index} playlist={songs} />
                                 </motion.div>
                             ))}
                         </motion.div>

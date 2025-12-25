@@ -511,7 +511,7 @@ export const DownloadsPage = () => {
                             >
                                 {/* Song Card - takes most space */}
                                 <div className="flex-1 min-w-0" onClick={() => handlePlaySong(song)}>
-                                    <SongCard song={song} index={index} showIndex />
+                                    <SongCard song={song} index={index} showIndex playlist={downloads} />
                                 </div>
 
                                 {/* Size & Remove button - always visible on right */}

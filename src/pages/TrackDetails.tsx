@@ -262,7 +262,7 @@ const TrackDetails = () => {
                         <h2 className="text-xl font-bold">Related Tracks</h2>
                         <div className="glass-card p-4 space-y-1">
                             {relatedTracks.map((song, index) => (
-                                <SongCard key={song.id} song={song} index={index} showIndex />
+                                <SongCard key={song.id} song={song} index={index} showIndex playlist={relatedTracks} />
                             ))}
                         </div>
                     </section>
