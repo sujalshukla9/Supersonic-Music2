@@ -3,20 +3,34 @@ import { GenreCard } from '@/components/cards/GenreCard';
 import { PlaylistCard } from '@/components/cards/PlaylistCard';
 import { SongCard } from '@/components/cards/SongCard';
 import { genres, playlists, trendingSongs } from '@/data/mockData';
-import { getNewReleases, durationToSeconds } from '@/lib/youtube';
+import { durationToSeconds } from '@/lib/youtube';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Clock, Flame, Loader2, RefreshCw } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Song } from '@/types';
+import { BACKEND_URL } from '@/config/api';
 
 const AUTO_REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+interface VideoResponse {
+  id: string;
+  title: string;
+  artist?: string;
+  channelTitle?: string;
+  channelId?: string;
+  thumbnail: string;
+  duration?: string;
+  durationSeconds?: number;
+}
 
 const Explore = () => {
   const [newReleases, setNewReleases] = useState<Song[]>([]);
   const [isLoadingReleases, setIsLoadingReleases] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const hasFetchedRef = useRef(false);
+  const retryCountRef = useRef(0);
 
   const fetchNewReleases = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) {
@@ -26,27 +40,101 @@ const Explore = () => {
     }
 
     try {
-      const releases = await getNewReleases(10);
+      let releases: VideoResponse[] = [];
 
+      // Strategy 1: Try dedicated new releases endpoint or search
+      try {
+        console.log('[Explore] Fetching new releases...');
+        const response = await fetch(`${BACKEND_URL}/search?q=new+bollywood+songs+2024+official+video&maxResults=10`);
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.results && data.results.length > 0) {
+            releases = data.results;
+            console.log('[Explore] Got new releases:', releases.length);
+          }
+        }
+      } catch (e) {
+        console.warn('[Explore] New releases search failed:', e);
+      }
+
+      // Strategy 2: Try home sections for new releases
+      if (releases.length === 0) {
+        try {
+          console.log('[Explore] Trying home sections...');
+          const homeResponse = await fetch(`${BACKEND_URL}/home/sections`);
+
+          if (homeResponse.ok) {
+            const homeData = await homeResponse.json();
+            if (homeData.sections && homeData.sections.length > 0) {
+              // Look for a section that might contain new releases
+              const newReleasesSection = homeData.sections.find((s: any) =>
+                s.title?.toLowerCase().includes('new') ||
+                s.title?.toLowerCase().includes('release') ||
+                s.title?.toLowerCase().includes('latest')
+              ) || homeData.sections[0];
+
+              if (newReleasesSection?.items?.length > 0) {
+                releases = newReleasesSection.items.slice(0, 10);
+                console.log('[Explore] Got from home sections:', releases.length);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[Explore] Home sections failed:', e);
+        }
+      }
+
+      // Strategy 3: Fall back to trending
+      if (releases.length === 0) {
+        try {
+          console.log('[Explore] Falling back to trending...');
+          const trendingResponse = await fetch(`${BACKEND_URL}/trending?maxResults=10`);
+
+          if (trendingResponse.ok) {
+            const trendingData = await trendingResponse.json();
+            if (trendingData.results && trendingData.results.length > 0) {
+              releases = trendingData.results;
+              console.log('[Explore] Got from trending:', releases.length);
+            }
+          }
+        } catch (e) {
+          console.warn('[Explore] Trending failed:', e);
+        }
+      }
+
+      // Process releases
       if (releases.length > 0) {
         const formattedSongs: Song[] = releases.map((video) => ({
           id: video.id,
           title: video.title,
-          artist: video.channelTitle,
+          artist: video.artist || video.channelTitle || '',
           artistId: video.channelId || video.channelTitle,
           channelId: video.channelId,
           thumbnail: video.thumbnail,
           duration: video.duration || '3:30',
-          durationSeconds: video.duration ? durationToSeconds(video.duration) : 210,
+          durationSeconds: video.durationSeconds || (video.duration ? durationToSeconds(video.duration) : 210),
         }));
         setNewReleases(formattedSongs);
+        setLastUpdated(new Date());
+        retryCountRef.current = 0;
       } else {
-        // Fallback to mock data if no results
+        // Final fallback to mock data
+        console.log('[Explore] Using mock data fallback');
         setNewReleases(trendingSongs.slice(0, 10));
+        setLastUpdated(new Date());
       }
-      setLastUpdated(new Date());
     } catch (error) {
-      console.error('Failed to fetch new releases:', error);
+      console.error('[Explore] Failed to fetch new releases:', error);
+
+      // Auto-retry once
+      if (retryCountRef.current < 1) {
+        retryCountRef.current++;
+        console.log('[Explore] Auto-retrying...');
+        setTimeout(() => fetchNewReleases(false), 1000);
+        return;
+      }
+
       // Fallback to mock data on error
       setNewReleases(trendingSongs.slice(0, 10));
       setLastUpdated(new Date());
@@ -58,7 +146,10 @@ const Explore = () => {
 
   // Initial fetch
   useEffect(() => {
-    fetchNewReleases();
+    if (!hasFetchedRef.current) {
+      hasFetchedRef.current = true;
+      fetchNewReleases();
+    }
   }, [fetchNewReleases]);
 
   // Auto-refresh every 5 minutes
@@ -210,4 +301,3 @@ const Explore = () => {
 };
 
 export default Explore;
-

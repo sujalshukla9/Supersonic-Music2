@@ -202,11 +202,11 @@ export const usePlayerStore = create<PlayerState>()(
                                     const newSongs: Song[] = autoplayVideos.map(v => ({
                                         id: v.id,
                                         title: v.title,
-                                        artist: v.channelTitle || '',
+                                        artist: v.artist || v.channelTitle || '',
                                         channelId: v.channelId,
                                         thumbnail: v.thumbnail || '',
-                                        duration: v.duration || '0:00',
-                                        durationSeconds: v.durationSeconds || 0,
+                                        duration: v.duration || '3:30',
+                                        durationSeconds: v.durationSeconds || 210,
                                     }));
 
                                     const existingIds = new Set(queue.map(s => s.id));

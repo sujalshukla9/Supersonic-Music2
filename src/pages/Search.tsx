@@ -50,7 +50,7 @@ const Search = () => {
         const formattedSongs: Song[] = songsResults.map((video) => ({
           id: video.id,
           title: video.title,
-          artist: video.channelTitle,
+          artist: video.artist || video.channelTitle || '',
           artistId: video.channelId || video.channelTitle,
           channelId: video.channelId,
           thumbnail: video.thumbnail,

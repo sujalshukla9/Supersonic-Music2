@@ -43,7 +43,8 @@ export const searchYouTube = async (query: string, maxResults = 20): Promise<You
       return data.results?.map((item: any) => ({
         id: item.id,
         title: item.title,
-        channelTitle: item.artist || item.channelTitle,
+        artist: item.artist || item.channelTitle || '',
+        channelTitle: item.channelTitle || item.artist || '',
         channelId: item.channelId,
         thumbnail: item.thumbnail,
         duration: item.duration,

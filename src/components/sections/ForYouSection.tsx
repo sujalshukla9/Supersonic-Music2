@@ -16,6 +16,7 @@ interface RecommendationResponse {
     duration?: string;
     durationSeconds?: number;
     channelId?: string;
+    reason?: string;
 }
 
 interface BasedOnData {
@@ -26,7 +27,7 @@ interface BasedOnData {
 }
 
 export const ForYouSection = () => {
-    const { setQueue, playSong } = usePlayerStore();
+    const { setQueue, playSong, history } = usePlayerStore();
     const [songs, setSongs] = useState<Song[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -34,104 +35,156 @@ export const ForYouSection = () => {
     const [error, setError] = useState<string | null>(null);
     const [source, setSource] = useState<string>('');
     const hasFetchedRef = useRef(false);
+    const retryCountRef = useRef(0);
 
     const fetchRecommendations = useCallback(async (showRefresh = false) => {
         if (showRefresh) setIsRefreshing(true);
         setError(null);
 
         try {
-            // Fetch personalized recommendations from ytmusicapi-powered endpoint
-            const response = await fetch(`${BACKEND_URL}/recommendations/for-you?limit=10`);
+            let foundSongs: RecommendationResponse[] = [];
+            let foundBasedOn: BasedOnData | null = null;
+            let foundSource = '';
 
-            if (response.ok) {
-                const data = await response.json();
-                if (data.results && data.results.length > 0) {
-                    console.log('[ForYou] Fetched recommendations:', data.results.length, 'songs, source:', data.source);
-                    const formattedSongs: Song[] = data.results.map((video: RecommendationResponse) => ({
-                        id: video.id,
-                        title: video.title,
-                        artist: video.artist || video.channelTitle || '',
-                        artistId: video.channelId || video.channelTitle,
-                        channelId: video.channelId,
-                        thumbnail: video.thumbnail,
-                        duration: video.duration || '3:30',
-                        durationSeconds: video.durationSeconds || 210,
-                    }));
-                    setSongs(formattedSongs);
-                    setSource(data.source || 'ytmusicapi');
+            // Strategy 1: Fetch personalized recommendations from backend
+            try {
+                console.log('[ForYou] Fetching personalized recommendations...');
+                const response = await fetch(`${BACKEND_URL}/recommendations/for-you?limit=10`);
 
-                    if (data.basedOn) {
-                        setBasedOn(data.basedOn);
-                    }
-                    return;
-                }
-            }
-
-            // Fallback to home sections
-            console.log('[ForYou] Primary endpoint failed, trying home sections...');
-            const homeSectionsResponse = await fetch(`${BACKEND_URL}/home/sections`);
-
-            if (homeSectionsResponse.ok) {
-                const homeData = await homeSectionsResponse.json();
-                if (homeData.sections && homeData.sections.length > 0) {
-                    // Get songs from the first section with songs
-                    const songsSection = homeData.sections.find((s: any) =>
-                        s.items && s.items.length > 0 && s.items[0].id
-                    );
-
-                    if (songsSection) {
-                        const formattedSongs: Song[] = songsSection.items.slice(0, 10).map((item: RecommendationResponse) => ({
-                            id: item.id,
-                            title: item.title,
-                            artist: item.artist || '',
-                            artistId: item.channelId,
-                            channelId: item.channelId,
-                            thumbnail: item.thumbnail,
-                            duration: item.duration || '3:30',
-                            durationSeconds: item.durationSeconds || 210,
-                        }));
-                        setSongs(formattedSongs);
-                        setSource('ytmusic_home');
-                        setBasedOn({ topArtists: [], topMoods: [], totalPlays: 0, message: songsSection.title });
-                        return;
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.results && data.results.length > 0) {
+                        console.log('[ForYou] Got personalized:', data.results.length, 'songs, source:', data.source);
+                        foundSongs = data.results;
+                        foundSource = data.source || 'personalized';
+                        if (data.basedOn) {
+                            foundBasedOn = data.basedOn;
+                        }
                     }
                 }
+            } catch (e) {
+                console.warn('[ForYou] Personalized endpoint failed:', e);
             }
 
-            // Ultimate fallback to trending
-            console.log('[ForYou] Home sections failed, falling back to trending');
-            const trendingResponse = await fetch(`${BACKEND_URL}/trending?maxResults=10`);
+            // Strategy 2: Use YouTube Music home feed sections
+            if (foundSongs.length === 0) {
+                try {
+                    console.log('[ForYou] Trying home sections...');
+                    const homeSectionsResponse = await fetch(`${BACKEND_URL}/home/sections`);
 
-            if (trendingResponse.ok) {
-                const trendingData = await trendingResponse.json();
-                if (trendingData.results && trendingData.results.length > 0) {
-                    const formattedSongs: Song[] = trendingData.results.map((video: RecommendationResponse) => ({
-                        id: video.id,
-                        title: video.title,
-                        artist: video.artist || video.channelTitle || '',
-                        artistId: video.channelId || video.channelTitle,
-                        channelId: video.channelId,
-                        thumbnail: video.thumbnail,
-                        duration: video.duration || '3:30',
-                        durationSeconds: video.durationSeconds || 210,
-                    }));
-                    setSongs(formattedSongs);
-                    setSource('trending_fallback');
-                    setBasedOn({ topArtists: [], topMoods: [], totalPlays: 0, message: 'Based on trending' });
-                    return;
+                    if (homeSectionsResponse.ok) {
+                        const homeData = await homeSectionsResponse.json();
+                        if (homeData.sections && homeData.sections.length > 0) {
+                            // Find a good section with music items
+                            const musicSection = homeData.sections.find((s: any) =>
+                                s.items && s.items.length >= 5 && s.items[0].id
+                            );
+
+                            if (musicSection) {
+                                foundSongs = musicSection.items.slice(0, 10);
+                                foundSource = 'ytmusic_home';
+                                foundBasedOn = {
+                                    topArtists: [],
+                                    topMoods: [],
+                                    totalPlays: 0,
+                                    message: musicSection.title || 'From YouTube Music'
+                                };
+                                console.log('[ForYou] Got from home section:', foundSongs.length);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[ForYou] Home sections failed:', e);
                 }
             }
 
-            // If all fails, set error
-            setError('Unable to load recommendations');
+            // Strategy 3: Use autoplay queue with history seed
+            if (foundSongs.length === 0 && history.length > 0) {
+                try {
+                    console.log('[ForYou] Trying autoplay with history seed...');
+                    const seedSong = history[Math.floor(Math.random() * Math.min(3, history.length))];
+                    const response = await fetch(`${BACKEND_URL}/autoplay/${seedSong.id}?count=10`);
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.queue && data.queue.length > 0) {
+                            foundSongs = data.queue;
+                            foundSource = 'autoplay';
+                            foundBasedOn = {
+                                topArtists: [],
+                                topMoods: [],
+                                totalPlays: history.length,
+                                message: `Based on "${seedSong.title}"`
+                            };
+                            console.log('[ForYou] Got from autoplay:', foundSongs.length);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[ForYou] Autoplay failed:', e);
+                }
+            }
+
+            // Strategy 4: Final fallback to trending
+            if (foundSongs.length === 0) {
+                try {
+                    console.log('[ForYou] Falling back to trending...');
+                    const trendingResponse = await fetch(`${BACKEND_URL}/trending?maxResults=10`);
+
+                    if (trendingResponse.ok) {
+                        const trendingData = await trendingResponse.json();
+                        if (trendingData.results && trendingData.results.length > 0) {
+                            foundSongs = trendingData.results;
+                            foundSource = 'trending_fallback';
+                            foundBasedOn = {
+                                topArtists: [],
+                                topMoods: [],
+                                totalPlays: 0,
+                                message: 'Based on trending'
+                            };
+                            console.log('[ForYou] Got from trending:', foundSongs.length);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[ForYou] Trending failed:', e);
+                }
+            }
+
+            // Process found songs
+            if (foundSongs.length > 0) {
+                const formattedSongs: Song[] = foundSongs.map((video: RecommendationResponse) => ({
+                    id: video.id,
+                    title: video.title,
+                    artist: video.artist || video.channelTitle || '',
+                    artistId: video.channelId || video.channelTitle,
+                    channelId: video.channelId,
+                    thumbnail: video.thumbnail,
+                    duration: video.duration || '3:30',
+                    durationSeconds: video.durationSeconds || 210,
+                }));
+                setSongs(formattedSongs);
+                setSource(foundSource);
+                setBasedOn(foundBasedOn);
+                retryCountRef.current = 0;
+            } else {
+                throw new Error('No recommendations found');
+            }
         } catch (error) {
-            console.log('[ForYou] Failed to fetch recommendations:', error);
+            console.log('[ForYou] All strategies failed:', error);
+
+            // Auto-retry once
+            if (retryCountRef.current < 1) {
+                retryCountRef.current++;
+                console.log('[ForYou] Auto-retrying...');
+                setTimeout(() => fetchRecommendations(false), 1500);
+                return;
+            }
+
             setError('Unable to load recommendations');
         } finally {
             setIsLoading(false);
             setIsRefreshing(false);
         }
-    }, []);
+    }, [history]);
 
     useEffect(() => {
         // Only fetch once on mount
@@ -142,6 +195,7 @@ export const ForYouSection = () => {
     }, [fetchRecommendations]);
 
     const handleRefresh = () => {
+        retryCountRef.current = 0;
         fetchRecommendations(true);
     };
 
@@ -168,11 +222,10 @@ export const ForYouSection = () => {
                         <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
                             For You
                         </h2>
-                        {basedOn && basedOn.totalPlays > 0 && (
+                        {basedOn && basedOn.totalPlays > 0 && basedOn.topArtists.length > 0 && (
                             <p className="text-xs text-muted-foreground">
-                                Based on {basedOn.topArtists.length > 0 && `${basedOn.topArtists.slice(0, 2).join(', ')}`}
-                                {basedOn.topMoods.length > 0 && basedOn.topArtists.length > 0 && ' & '}
-                                {basedOn.topMoods.length > 0 && `${basedOn.topMoods[0]} vibes`}
+                                Based on {basedOn.topArtists.slice(0, 2).join(' & ')}
+                                {basedOn.topMoods.length > 0 && ` • ${basedOn.topMoods[0]} vibes`}
                             </p>
                         )}
                         {basedOn && basedOn.totalPlays === 0 && !basedOn.message && (
@@ -185,7 +238,7 @@ export const ForYouSection = () => {
                                 {basedOn.message}
                             </p>
                         )}
-                        {source && source !== 'personalized' && !basedOn?.message && (
+                        {!basedOn && source && (
                             <p className="text-xs text-muted-foreground opacity-60">
                                 Powered by YouTube Music
                             </p>
