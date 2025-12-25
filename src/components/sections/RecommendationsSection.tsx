@@ -1,38 +1,43 @@
-import { ChevronRight, Sparkles, Loader2, RefreshCw } from 'lucide-react';
+import { ChevronRight, Sparkles, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SongCard } from '@/components/cards/SongCard';
 import { usePlayerStore } from '@/store/playerStore';
 import { Song } from '@/types';
-import { useEffect, useState, useCallback } from 'react';
-import { getAutoplayQueue, YouTubeVideo } from '@/lib/youtube';
+import { useEffect, useState, useRef } from 'react';
+import { getAutoplayQueue, getTrendingMusic, YouTubeVideo } from '@/lib/youtube';
 import { Link } from 'react-router-dom';
 
 export const RecommendationsSection = () => {
-    const { history, setQueue } = usePlayerStore();
+    const { history } = usePlayerStore();
     const [songs, setSongs] = useState<Song[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [seedTitle, setSeedTitle] = useState<string>('');
+    const [error, setError] = useState<string | null>(null);
+    const hasFetchedRef = useRef(false);
 
-    const fetchRecommendations = useCallback(async (showRefresh = false) => {
+    const fetchRecommendations = async (showRefresh = false) => {
         if (showRefresh) setIsRefreshing(true);
         else setIsLoading(true);
+        setError(null);
 
         try {
-            // Use last played song as seed, or use a default
+            // Use last played song as seed, or use a default popular song
             const seedSong = history[0];
-            const seedId = seedSong?.id || 'vGJTaP6anOU'; // Default to Kesariya
+            const seedId = seedSong?.id || 'vGJTaP6anOU'; // Default to Kesariya (popular Indian song)
 
             setSeedTitle(seedSong?.title || 'Popular tracks');
 
+            console.log('[QuickPicks] Fetching recommendations with seed:', seedId);
             const recommendations = await getAutoplayQueue(seedId, 12);
 
-            if (recommendations.length > 0) {
+            if (recommendations && recommendations.length > 0) {
                 const formattedSongs: Song[] = recommendations.map((video: YouTubeVideo) => ({
                     id: video.id,
                     title: video.title,
-                    artist: video.artist || video.channelTitle,
+                    artist: video.artist || video.channelTitle || '',
                     artistId: video.channelId || video.artist,
+                    channelId: video.channelId,
                     thumbnail: video.thumbnail,
                     duration: video.duration || '3:30',
                     durationSeconds: video.durationSeconds || 210,
@@ -40,19 +45,53 @@ export const RecommendationsSection = () => {
                     source: video.source
                 }));
                 setSongs(formattedSongs);
-                setQueue(formattedSongs);
+                console.log('[QuickPicks] Loaded', formattedSongs.length, 'recommendations');
+                return;
             }
+
+            // Fallback to trending if autoplay returns nothing
+            console.log('[QuickPicks] Autoplay empty, falling back to trending...');
+            const trending = await getTrendingMusic(12);
+
+            if (trending && trending.length > 0) {
+                const formattedSongs: Song[] = trending.map((video: YouTubeVideo) => ({
+                    id: video.id,
+                    title: video.title,
+                    artist: video.artist || video.channelTitle || '',
+                    artistId: video.channelId || video.artist,
+                    channelId: video.channelId,
+                    thumbnail: video.thumbnail,
+                    duration: video.duration || '3:30',
+                    durationSeconds: video.durationSeconds || 210,
+                }));
+                setSongs(formattedSongs);
+                setSeedTitle('Trending now');
+                console.log('[QuickPicks] Loaded', formattedSongs.length, 'trending songs as fallback');
+                return;
+            }
+
+            // If all fails
+            setError('Unable to load recommendations');
         } catch (error) {
-            console.error('[Recommendations] Error:', error);
+            console.error('[QuickPicks] Error:', error);
+            setError('Failed to load recommendations');
         } finally {
             setIsLoading(false);
             setIsRefreshing(false);
         }
-    }, [history, setQueue]);
+    };
 
     useEffect(() => {
-        fetchRecommendations();
-    }, [fetchRecommendations]);
+        // Only fetch once on mount to prevent infinite loops
+        if (!hasFetchedRef.current) {
+            hasFetchedRef.current = true;
+            fetchRecommendations();
+        }
+    }, []);
+
+    const handleRefresh = () => {
+        fetchRecommendations(true);
+    };
 
     return (
         <section className="py-6 sm:py-8">
@@ -74,7 +113,7 @@ export const RecommendationsSection = () => {
                     <motion.button
                         whileHover={{ rotate: 180 }}
                         whileTap={{ scale: 0.9 }}
-                        onClick={() => fetchRecommendations(true)}
+                        onClick={handleRefresh}
                         disabled={isRefreshing}
                         className="p-2 rounded-full hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
                     >
@@ -103,6 +142,44 @@ export const RecommendationsSection = () => {
                             className="flex items-center justify-center py-12"
                         >
                             <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                        </motion.div>
+                    ) : error ? (
+                        <motion.div
+                            key="error"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="flex flex-col items-center justify-center py-12 text-center"
+                        >
+                            <AlertCircle className="w-10 h-10 text-muted-foreground mb-3" />
+                            <p className="text-sm text-muted-foreground mb-3">{error}</p>
+                            <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={handleRefresh}
+                                className="px-4 py-2 text-sm bg-primary/20 text-primary rounded-full"
+                            >
+                                Try Again
+                            </motion.button>
+                        </motion.div>
+                    ) : songs.length === 0 ? (
+                        <motion.div
+                            key="empty"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="flex flex-col items-center justify-center py-12 text-center"
+                        >
+                            <Sparkles className="w-10 h-10 text-muted-foreground mb-3" />
+                            <p className="text-sm text-muted-foreground">No recommendations yet</p>
+                            <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={handleRefresh}
+                                className="mt-3 px-4 py-2 text-sm bg-primary/20 text-primary rounded-full"
+                            >
+                                Refresh
+                            </motion.button>
                         </motion.div>
                     ) : (
                         <motion.div

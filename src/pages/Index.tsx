@@ -17,11 +17,17 @@ const Index = () => {
 
       <div className="space-y-4 sm:space-y-8">
         <HeroBanner />
+        {/* Recently Played - only shows if user has history */}
         <RecentlyPlayedSection />
-        <RecommendationsSection />
-        <ForYouSection />
+        {/* Trending - main content section that always shows */}
         <TrendingSection />
+        {/* Quick Picks - personalized or default recommendations */}
+        <RecommendationsSection />
+        {/* For You - personalized content based on habits */}
+        <ForYouSection />
+        {/* Featured Playlists - uses mock data, always shows */}
         <PlaylistSection />
+        {/* Top Artists - uses mock data, always shows */}
         <ArtistsSection />
       </div>
     </>
